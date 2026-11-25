@@ -2,28 +2,26 @@
 import { DISCLAIMER, RULE_LIBRARY_VERSION } from '../config';
 import { COMMAND_HINT } from './command';
 import { empty, html, panel, type Raw } from './dom';
-import { NO_CASE, type CaseTab, type Route } from './router';
-
-const NO_DATA = 'NO CASE LOADED';
+import { confirmView } from './confirm';
+import { caseView } from './dashboard';
+import { portfolioView } from './portfolio';
+import { NO_CASE, type Route } from './router';
+import { store } from './state';
 
 type BuildState = 'DONE' | 'NEXT' | 'PLANNED';
 const BUILD_STAGES: ReadonlyArray<readonly [string, BuildState]> = [
   ['Terminal shell, CI and Pages deploy', 'DONE'],
-  ['Schema, Excel/CSV ingest, confirm screen', 'NEXT'],
-  ['Beneish M-score with hand-checked tests', 'PLANNED'],
-  ['Other rule batteries, Fraud Triangle, case file', 'PLANNED'],
-  ['Company dashboard and portfolio monitor', 'PLANNED'],
-  ['Manual entry and PDF extraction', 'PLANNED'],
+  ['Schema, Excel/CSV ingest, confirm screen', 'DONE'],
+  ['Beneish M-score with hand-checked tests', 'DONE'],
+  ['Other rule batteries, Fraud Triangle, case file', 'DONE'],
+  ['Company dashboard and portfolio monitor', 'DONE'],
+  ['Manual entry and PDF extraction', 'NEXT'],
   ['Honest-profit estimator and text rules', 'PLANNED'],
   ['Offline sector benchmarks and back-test', 'PLANNED'],
 ];
 
 function home(): Raw {
-  const routes: ReadonlyArray<readonly [string, string, string]> = [
-    ['1', 'Excel / CSV', 'Screener.in-style export, with a column-mapping step'],
-    ['2', 'Manual entry', 'Type the key line items for two or more years'],
-    ['3', 'PDF annual report', 'Rule-based extraction; scanned PDFs fall back to manual entry'],
-  ];
+  const samples = store.list().filter((r) => r.caseFile.sample).length;
   return html`<div class="grid">
     ${panel(
       'A',
@@ -31,47 +29,33 @@ function home(): Raw {
       html`<p class="lead">Do these accounts look <em>too</em> good?</p>
         <ol class="steps">
           <li>You load a company's financial report. It is read inside this browser tab and never uploaded.</li>
-          <li>
-            A fixed library of published forensic checks compares profit with cash, this year with last year, and the
-            company with its sector.
-          </li>
-          <li>
-            You get a score, the evidence behind every flag, the innocent explanation for each one, and what to check
-            next.
-          </li>
+          <li>A fixed library of published forensic checks compares profit with cash, this year with last year, and the company with its sector.</li>
+          <li>You get a score, the evidence behind every flag, the innocent explanation for each one, and what to check next.</li>
         </ol>
-        <p class="muted">
-          Scope: Indian listed non-financial companies (NSE/BSE, Ind AS). Banks, NBFCs and insurers are reported as
-          "Not assessable" because these rules are not valid for them.
-        </p>`,
+        <p class="muted">Scope: Indian listed non-financial companies (NSE/BSE, Ind AS). Banks, NBFCs and insurers are reported as "Not assessable" because these rules are not valid for them.</p>`,
       7,
     )}
     ${panel(
       'B',
       'Load a report',
-      html`<ul class="rows">
-          ${routes.map(
-            ([n, name, note]) =>
-              html`<li>
-                <span class="k">${n} ${name}</span><span class="muted">${note}</span
-                ><span class="tag tag-muted">NOT BUILT YET</span>
-              </li>`,
-          )}
-        </ul>
-        <p class="muted">Input routes arrive in the next builds. Nothing can be loaded in this build.</p>`,
+      html`<p><label class="btn primary">1 · CHOOSE EXCEL / CSV FILE<input type="file" class="sr" data-act="file" accept=".xlsx,.xls,.csv" /></label></p>
+        <p class="muted">A Screener.in "Export to Excel" file works as it is. Any sheet with line items down the side and years across the top also works. You review every figure before anything is scored.</p>
+        <p><button type="button" data-act="sample-csv">DOWNLOAD A SYNTHETIC SAMPLE CSV</button> <span class="muted">to try the upload yourself</span></p>
+        <ul class="rows">
+          <li><span class="k">2 Manual entry</span><span class="muted">Type the key line items for two or more years</span><span class="tag tag-muted">BUILD 6</span></li>
+          <li><span class="k">3 PDF annual report</span><span class="muted">Rule-based extraction; scanned PDFs fall back to manual entry</span><span class="tag tag-muted">BUILD 6</span></li>
+        </ul>`,
       5,
     )}
     ${panel(
       'C',
-      'Build status',
-      html`<ol class="rows">
-        ${BUILD_STAGES.map(
-          ([label, state], i) =>
-            html`<li>
-              <span class="k">${i + 1} ${label}</span><span class="tag tag-${state.toLowerCase()}">${state}</span>
-            </li>`,
-        )}
-      </ol>`,
+      'Sample set and portfolio',
+      html`<p>${store.list().length} company record(s) stored in this browser, of which ${samples} are <strong>synthetic samples</strong> (invented companies, clearly labelled SAMPLE).</p>
+        <p><a class="btn" href="#/portfolio">OPEN PORTFOLIO MONITOR (F6)</a>
+          ${samples ? html`<button type="button" data-act="samples-clear">REMOVE SAMPLE SET</button>` : html`<button type="button" data-act="samples-load">LOAD SAMPLE SET</button>`}</p>
+        <ol class="rows">
+          ${BUILD_STAGES.map(([label, state], i) => html`<li><span class="k">${i + 1} ${label}</span><span class="tag tag-${state.toLowerCase()}">${state}</span></li>`)}
+        </ol>`,
       7,
     )}
     ${panel(
@@ -79,7 +63,9 @@ function home(): Raw {
       'Ground rules',
       html`<ul class="plain">
         <li>No figure is ever invented. A missing number stays missing and its metric is left out.</li>
-        <li>Every number traces back to a source file, a page and a confidence level.</li>
+        <li>Every number traces back to a source file, a row and a confidence level.</li>
+        <li>Figures the source does not report exactly are labelled PROXY and can be switched off.</li>
+        <li>Thresholds and weights are judgment, not yet back-tested on Indian data. Sector benchmarks are placeholders.</li>
         <li>${DISCLAIMER}</li>
       </ul>`,
       5,
@@ -87,62 +73,13 @@ function home(): Raw {
   </div>`;
 }
 
-const PANELS: Record<number, { title: string; span: number; note: string }> = {
-  1: { title: 'Verdict', span: 4, note: 'Tier, models agreeing, Fraud Triangle bars, reported vs stress-tested profit.' },
-  2: { title: 'Price · volume vs flag date', span: 8, note: 'Needs an optional price CSV; otherwise revenue and PAT trend.' },
-  3: { title: 'Beneish · 8 ratios vs benchmark (1.00)', span: 5, note: 'Eight ratios, colour and text coded, plus M-score vs threshold.' },
-  4: { title: 'Profit vs cash · 5 years', span: 4, note: 'Paired columns: profit after tax against cash from operations.' },
-  5: { title: 'Honest-profit bridge', span: 3, note: 'Waterfall from reported to stress-tested profit.' },
-  6: { title: 'Evidence ledger · top flags', span: 8, note: 'Figure vs benchmark, source, and the innocent explanation.' },
-  7: { title: 'Words vs numbers · India pack', span: 4, note: 'Quoted management claim against the contradicting figure.' },
-  8: { title: 'Next steps', span: 6, note: 'Concrete things to check or ask.' },
-  9: { title: 'Data quality', span: 6, note: 'Extraction confidence per statement and integrity checks.' },
-};
-
-const TAB_PANELS: Record<CaseTab, readonly number[]> = {
-  verdict: [1, 2, 3, 4, 5, 6, 7, 8, 9],
-  earnings: [4, 5, 6, 9],
-  beneish: [3, 6, 9],
-  cash: [4, 2, 5],
-  governance: [7, 6, 8],
-};
-
-function caseView(id: string, tab: CaseTab): Raw {
-  const banner =
-    id === NO_CASE
-      ? html`<p class="banner" role="status">
-          <span class="tag tag-muted">EMPTY</span> ${NO_DATA}. Load a report from <a href="#/">HOME</a> once ingest is
-          built.
-        </p>`
-      : html`<p class="banner" role="status">
-          <span class="tag tag-muted">NOT FOUND</span> No case file for <strong>${id}</strong> is stored in this
-          browser. Nothing is fetched from the internet.
-        </p>`;
-  return html`${banner}
-    <div class="grid">
-      ${TAB_PANELS[tab].map((n) => {
-        const p = PANELS[n];
-        return p ? panel(n, p.title, empty(NO_DATA, p.note), tab === 'verdict' ? p.span : 6) : null;
-      })}
-    </div>`;
-}
-
-function portfolio(): Raw {
-  const strip = ['Scanned', 'Suspicious', 'Watch', 'Clean', 'Not assessable'];
-  const blocks: ReadonlyArray<readonly [string, number, string]> = [
-    ['Company heatmap', 8, 'One tile per company, coloured by score with the score printed.'],
-    ['Score distribution', 4, 'Histogram of scores across all tested companies.'],
-    ['Watch + suspicious by sector', 4, 'Bars by sector.'],
-    ['Quarantine', 8, 'Flagged companies with status, notes and CSV export.'],
-    ['Prediction ledger', 6, 'Flags logged, outcomes marked later: hit rate and false alarms.'],
-    ['Re-scan changes', 6, 'Worsened or improved since the last filing.'],
-  ];
-  return html`<dl class="strip" aria-label="Scan summary">
-      ${strip.map((s) => html`<div><dt>${s}</dt><dd>0</dd></div>`)}
-    </dl>
-    <div class="grid">
-      ${blocks.map(([title, span, note], i) => panel(i + 1, title, empty('NO COMPANIES SCANNED YET', note), span))}
-    </div>`;
+function emptyCase(id: string): Raw {
+  return html`<p class="banner" role="status">
+      <span class="tag tag-muted">${id === NO_CASE ? 'EMPTY' : 'NOT FOUND'}</span>
+      ${id === NO_CASE ? html`No company selected.` : html`No case file for <strong>${id}</strong> is stored in this browser. Nothing is fetched from the internet.`}
+      Load a report from <a href="#/">HOME</a> or pick a company in the <a href="#/portfolio">PORTFOLIO</a>.
+    </p>
+    <div class="grid">${panel(1, 'Verdict', empty('NO CASE LOADED', 'Tier, models agreeing, Fraud Triangle bars and the evidence appear here once a company is scanned.'))}</div>`;
 }
 
 function privacy(): Raw {
@@ -163,7 +100,7 @@ function privacy(): Raw {
             storage on this device. Clearing site data removes them.
           </li>
           <li>Nobody else, including the author, can see what you load or what the engine finds.</li>
-          <li>To move or back up your data, use Export / Import JSON (arrives with the portfolio build).</li>
+          <li>To move or back up your data, use Export / Import JSON on the Portfolio screen.</li>
         </ul>
         <p class="muted">
           The site is served by GitHub Pages, which, like any web host, can log the request for the page itself (for
@@ -226,7 +163,7 @@ function help(): Raw {
     </table>`;
   return html`<div class="grid">
     ${panel('H', 'Keys', table(keys, 'Key'), 6)} ${panel('C', 'Command line', table(cmds, 'Command'), 6)}
-    ${panel('R', 'Rule library', html`<p>Version ${RULE_LIBRARY_VERSION}. No rules are loaded in this build.</p>`)}
+    ${panel('R', 'Rule library', html`<p>Version ${RULE_LIBRARY_VERSION}. Every rule, threshold, weight and explanation is in config/rules.json. Open any check on a company dashboard to see its formula and inputs.</p>`)}
   </div>`;
 }
 
@@ -236,14 +173,33 @@ function notFound(path: string): Raw {
   </div>`;
 }
 
-export function renderRoute(r: Route): { title: string; body: Raw } {
+export interface View {
+  title: string;
+  body: Raw;
+  /** Shown next to the command line. */
+  context?: string;
+  sample?: boolean;
+}
+
+export function renderRoute(r: Route): View {
   switch (r.name) {
     case 'home':
       return { title: 'Home', body: home() };
-    case 'case':
-      return { title: `${r.id === NO_CASE ? 'No case' : r.id} · ${r.tab}`, body: caseView(r.id, r.tab) };
+    case 'case': {
+      const rec = store.db.cases[r.id];
+      if (!rec) return { title: `${r.id === NO_CASE ? 'No case' : r.id} · ${r.tab}`, body: emptyCase(r.id) };
+      const cf = rec.caseFile;
+      return {
+        title: `${r.id} · ${r.tab}`,
+        body: caseView(rec, r.tab),
+        context: `${cf.company.latestYear} · ${cf.company.basis} · Confidence ${cf.verdict.confidence.level} (${cf.company.years.length} yrs data)`,
+        sample: cf.sample,
+      };
+    }
+    case 'confirm':
+      return { title: 'Confirm upload', body: confirmView() };
     case 'portfolio':
-      return { title: 'Portfolio monitor', body: portfolio() };
+      return { title: 'Portfolio monitor', body: portfolioView(), sample: store.list().some((x) => x.caseFile.sample) };
     case 'privacy':
       return { title: 'Privacy', body: privacy() };
     case 'validation':

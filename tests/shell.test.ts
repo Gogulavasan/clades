@@ -3,6 +3,11 @@ import { RULE_LIBRARY_VERSION } from '../src/config';
 import { parseCommand } from '../src/ui/command';
 import { esc, html } from '../src/ui/dom';
 import { CASE_TABS, NO_CASE, formatRoute, parseRoute, type Route } from '../src/ui/router';
+import { parseGrid } from '../src/ingest/grid';
+import { autoMap, defaultMeta } from '../src/standardise/standardise';
+import { SAMPLE_PROFILES, sampleGrid } from '../src/storage/sample';
+import { quarantineCsv, quarantined } from '../src/ui/portfolio';
+import { loadSamples, store, ui } from '../src/ui/state';
 import { renderRoute } from '../src/ui/views';
 
 describe('router', () => {
@@ -85,9 +90,37 @@ describe('screens', () => {
     for (const r of routes) expect(renderRoute(r).body.value.length).toBeGreaterThan(50);
   });
 
-  it('shows all nine panels on the verdict tab', () => {
-    const body = renderRoute({ name: 'case', id: NO_CASE, tab: 'verdict' }).body.value;
-    for (let n = 1; n <= 9; n++) expect(body).toContain(`id="p-${n}"`);
+  it('shows all nine panels on the verdict tab and labels samples on every screen that lists them', () => {
+    loadSamples();
+    const view = renderRoute({ name: 'case', id: 'SMPL4', tab: 'verdict' });
+    for (let n = 1; n <= 9; n++) expect(view.body.value).toContain(`id="p-${n}"`);
+    expect(view.sample).toBe(true);
+    expect(view.body.value).toContain('Synthetic demo company');
+    for (const tab of CASE_TABS) expect(renderRoute({ name: 'case', id: 'SMPL4', tab }).body.value.length).toBeGreaterThan(500);
+    expect(renderRoute({ name: 'case', id: 'SMPL7', tab: 'verdict' }).body.value).toContain('NOT ASSESSABLE');
+    const port = renderRoute({ name: 'portfolio' });
+    expect(port.sample).toBe(true);
+    expect(port.body.value).toContain('SYNTHETIC demo data');
+    expect(quarantineCsv(quarantined())).toMatch(/SYNTHETIC SAMPLE/);
+  });
+
+  it('quarantine CSV neutralises cells a spreadsheet could run as formulas', () => {
+    loadSamples();
+    store.update('SMPL4', { notes: '=HYPERLINK("http://x","click")' });
+    expect(quarantineCsv(quarantined())).toContain(`"'=HYPERLINK(""http://x"",""click"")"`);
+    store.update('SMPL4', { notes: '' });
+  });
+
+  it('the confirm screen blocks the engine when the integrity gate fails', () => {
+    expect(renderRoute({ name: 'confirm' }).body.value).toContain('No upload is waiting');
+    const table = parseGrid(sampleGrid(SAMPLE_PROFILES[0] as (typeof SAMPLE_PROFILES)[number]), 'x.csv', 'Sheet1');
+    ui.draft = { table, mapping: autoMap(table), meta: defaultMeta(table), edits: {} };
+    expect(renderRoute({ name: 'confirm' }).body.value).toMatch(/PASS · scoring allowed/);
+    ui.draft.edits['FY2025|totalAssets'] = 1;
+    const blocked = renderRoute({ name: 'confirm' }).body.value;
+    expect(blocked).toMatch(/BLOCKED/);
+    expect(blocked).toMatch(/data-act="run" disabled/);
+    ui.draft = null;
   });
 
   it('never echoes an unknown ticker or path as live markup', () => {

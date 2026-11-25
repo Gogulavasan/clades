@@ -1,4 +1,5 @@
 import './ui/styles.css';
+import './ui/screens.css';
 import { mountShell } from './ui/shell';
 
 const root = document.getElementById('app');

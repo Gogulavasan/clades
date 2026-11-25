@@ -1,0 +1,8 @@
+{
+  "placeholder": true,
+  "asOf": null,
+  "source": "PLACEHOLDER. Round illustrative values, not measured from any dataset and not sector-specific. Replace by running scripts/build_benchmarks.py on public data.",
+  "coverage": "none",
+  "default": { "revenueGrowth": 0.1, "roe": 0.14, "cfoToPat": 0.85 },
+  "sectors": {}
+}

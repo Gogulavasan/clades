@@ -3,7 +3,12 @@ import { APP_NAME, DISCLAIMER, RULE_LIBRARY_VERSION, STORAGE_NOTE } from '../con
 import { parseCommand } from './command';
 import { html } from './dom';
 import { CASE_TABS, NO_CASE, formatRoute, parseRoute, type Route } from './router';
+import { byImportance, flagged } from '../casefile/build';
+import { ACTIONS } from './actions';
+import { seedIfEmpty, store, ui } from './state';
 import { renderRoute } from './views';
+
+const TAPE_ITEMS = 8;
 
 type FKey = { key: number; label: string; target: 'tab' | 'portfolio' | 'export'; tabIndex?: number };
 
@@ -26,6 +31,7 @@ export function mountShell(root: HTMLElement): void {
         <button type="submit">&lt;GO&gt;</button>
       </form>
       <span class="ctx" id="ctx"></span>
+      <span class="sample-flag" id="sample-flag"></span>
       <nav class="links" aria-label="Pages">
         <a href="#/validation">VALIDATION</a><a href="#/privacy">PRIVACY</a><a href="#/help">HELP</a>
       </nav>
@@ -39,9 +45,7 @@ export function mountShell(root: HTMLElement): void {
           </button>`,
       )}
     </nav>
-    <div class="tape" aria-label="Latest flags">
-      <span class="tape-label">FLAG TAPE</span><span class="muted">NO FLAGS · no company has been scanned</span>
-    </div>
+    <div class="tape" aria-label="Latest flags" id="tape"></div>
     <main id="main" tabindex="-1"></main>
     <p class="disclaimer">${DISCLAIMER}</p>
     <footer class="statusbar">
@@ -58,10 +62,13 @@ export function mountShell(root: HTMLElement): void {
   const ctx = need<HTMLElement>('#ctx');
   const msg = need<HTMLElement>('#cmd-msg');
   const cmd = need<HTMLInputElement>('#cmd');
+  const tape = need<HTMLElement>('#tape');
+  const sampleFlag = need<HTMLElement>('#sample-flag');
   const buttons = [...root.querySelectorAll<HTMLButtonElement>('[data-fkey]')];
 
   const go = (r: Route): void => {
     const next = formatRoute(r);
+    say('');
     if (location.hash === next) render();
     else location.hash = next;
   };
@@ -83,11 +90,18 @@ export function mountShell(root: HTMLElement): void {
   function render(): void {
     route = parseRoute(location.hash);
     if (route.name === 'case') currentCase = route.id;
-    const { title, body } = renderRoute(route);
-    main.innerHTML = body.value;
+    const view = renderRoute(route);
+    const { title } = view;
+    // Keep the caret and any opened evidence cards where they were when a change re-renders the screen.
+    const focusId = document.activeElement instanceof HTMLElement && main.contains(document.activeElement) ? document.activeElement.id : '';
+    const open = [...main.querySelectorAll('details[open] > summary')].map((s) => s.textContent);
+    main.innerHTML = view.body.value;
+    for (const s of main.querySelectorAll('details > summary')) if (open.includes(s.textContent)) s.parentElement?.setAttribute('open', '');
+    if (focusId) document.getElementById(focusId)?.focus();
     document.title = `${title} · ${APP_NAME}`;
-    ctx.textContent = title.toUpperCase();
-    say('');
+    ctx.textContent = view.context ?? title.toUpperCase();
+    sampleFlag.textContent = view.sample ? 'SAMPLE DATA · NOT A REAL COMPANY' : '';
+    renderTape();
     for (const b of buttons) {
       const f = FKEYS.find((k) => String(k.key) === b.dataset.fkey);
       const tab = f?.tabIndex === undefined ? undefined : CASE_TABS[f.tabIndex];
@@ -97,6 +111,40 @@ export function mountShell(root: HTMLElement): void {
     }
   }
 
+  function renderTape(): void {
+    const items = store
+      .list()
+      .flatMap((r) => r.caseFile.rules.filter(flagged).sort(byImportance).slice(0, 2).map((x) => ({ r, x })))
+      .sort((a, b) => byImportance(a.x, b.x))
+      .slice(0, TAPE_ITEMS);
+    tape.innerHTML = html`<span class="tape-label">FLAG TAPE</span>
+      ${items.length
+        ? items.map(
+            ({ r, x }) =>
+              html`<a href="${formatRoute({ name: 'case', id: r.id, tab: 'verdict' })}"
+                >${r.id}${r.caseFile.sample ? ' (SAMPLE)' : ''} ${x.title} ${x.display}
+                <span class="${x.level === 'red' ? 'lv-red' : 'lv-amber'}">${x.level === 'red' ? 'FLAG' : 'WATCH'}</span></a
+              >`,
+          )
+        : html`<span class="muted">NO FLAGS · no company has been scanned</span>`}`.value;
+  }
+
+  const act = (e: Event): void => {
+    const el = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-act]') : null;
+    if (!el) return;
+    const field = el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement;
+    // Form fields act when their value changes; buttons act on click.
+    if (field !== (e.type === 'change')) return;
+    say('');
+    void ACTIONS[el.dataset.act ?? '']?.(el);
+  };
+  main.addEventListener('click', act);
+  main.addEventListener('change', act);
+  ui.rerender = render;
+  ui.go = go;
+  ui.say = say;
+  seedIfEmpty();
+
   for (const b of buttons) b.addEventListener('click', () => press(Number(b.dataset.fkey)));
 
   need<HTMLFormElement>('#cmd-form').addEventListener('submit', (e) => {
@@ -104,7 +152,10 @@ export function mountShell(root: HTMLElement): void {
     const res = parseCommand(cmd.value);
     if (!res.ok) return say(res.error);
     cmd.value = '';
-    go(res.route);
+    // A typed ticker opens the stored company whatever its letter case.
+    const r = res.route;
+    const hit = r.name === 'case' ? store.list().find((x) => x.id.toUpperCase() === r.id) : undefined;
+    go(hit && r.name === 'case' ? { ...r, id: hit.id } : r);
     main.focus();
   });
 

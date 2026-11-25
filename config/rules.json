@@ -1,5 +1,303 @@
 {
-  "$comment": "CLADES rule library. Every threshold, weight and explanation lives here so rules can be added, tuned or disabled without code changes. Rules are added from build 3 onward.",
-  "version": "0.1.0",
-  "rules": []
+  "$comment": "CLADES rule library. Every threshold, weight and explanation lives here. Rules can be added (formula language: see src/rules/formula.ts), tuned or disabled ('enabled': false) without code changes. Weights and amber/red cut-offs are the author's judgment, NOT calibrated on Indian data; the back-test (build 8) exists to challenge them.",
+  "version": "0.5.0",
+  "beneish": {
+    "$comment": "Beneish (1999), 'The Detection of Earnings Manipulation', Financial Analysts Journal 55(5). Reference means below: verify against the paper; US sample; recalibrate on Indian data.",
+    "intercept": -4.84,
+    "coefficients": { "DSRI": 0.92, "GMI": 0.528, "AQI": 0.404, "SGI": 0.892, "DEPI": 0.115, "SGAI": -0.172, "TATA": 4.679, "LVGI": -0.327 },
+    "thresholds": { "flag": -1.78, "conservative": -2.22 },
+    "maxRedForClean": 2,
+    "tataMethod": "cashflow",
+    "ratioWeight": 1,
+    "ratios": {
+      "DSRI": {
+        "name": "Days sales in receivables index", "nonManipulator": 1.031, "manipulator": 1.465, "direction": "higher", "leg": "rationalisation",
+        "formula": "(Receivables_t / Sales_t) / (Receivables_t-1 / Sales_t-1)",
+        "plain": "Customers owe a bigger share of sales than last year. Sales may have been booked before the cash was certain.",
+        "innocent": "Longer credit terms to win customers, or a large order shipped just before year-end.",
+        "nextStep": "Read the receivables ageing note: how much is older than six months, and how much is from related parties?"
+      },
+      "GMI": {
+        "name": "Gross margin index", "nonManipulator": 1.014, "manipulator": 1.193, "direction": "higher", "leg": "pressure",
+        "formula": "GrossMargin_t-1 / GrossMargin_t, GrossMargin = (Sales - COGS) / Sales",
+        "plain": "Gross margin fell. Companies with worsening margins are under more pressure to make the numbers look better.",
+        "innocent": "Raw-material price spike, a change in product mix, or deliberate price cuts.",
+        "nextStep": "Compare the margin fall with listed peers and with input-cost movements in the same year."
+      },
+      "AQI": {
+        "name": "Asset quality index", "nonManipulator": 1.039, "manipulator": 1.254, "direction": "higher", "leg": "rationalisation",
+        "formula": "[1 - (CurrentAssets_t + PPE_t) / TotalAssets_t] / [1 - (CurrentAssets_t-1 + PPE_t-1) / TotalAssets_t-1]",
+        "plain": "A larger share of assets is neither current assets nor plant. Costs may be parked on the balance sheet instead of being expensed.",
+        "innocent": "An acquisition (goodwill), new long-term investments, or a genuine capital project under construction.",
+        "nextStep": "Find what grew in non-current assets: capital work-in-progress, intangibles, investments or 'other' assets."
+      },
+      "SGI": {
+        "name": "Sales growth index", "nonManipulator": 1.134, "manipulator": 1.607, "direction": "higher", "leg": "pressure",
+        "formula": "Sales_t / Sales_t-1",
+        "plain": "Sales grew fast. Growth is not a problem in itself, but fast growers face pressure to keep the streak alive.",
+        "innocent": "Real demand, new capacity, an acquisition or a low base.",
+        "nextStep": "Check whether cash collected from customers grew in line with reported sales."
+      },
+      "DEPI": {
+        "name": "Depreciation index", "nonManipulator": 1.001, "manipulator": 1.077, "direction": "higher", "leg": "rationalisation",
+        "formula": "[Dep_t-1 / (Dep_t-1 + PPE_t-1)] / [Dep_t / (Dep_t + PPE_t)]",
+        "plain": "Assets are being depreciated more slowly than last year, which lifts reported profit.",
+        "innocent": "Large new assets added late in the year, or a documented reassessment of useful lives.",
+        "nextStep": "Read the accounting-policy note for any change in useful lives or depreciation method."
+      },
+      "SGAI": {
+        "name": "SG&A index", "nonManipulator": 1.054, "manipulator": 1.041, "direction": "none", "leg": "pressure",
+        "formula": "(SGA_t / Sales_t) / (SGA_t-1 / Sales_t-1)",
+        "plain": "Shown for completeness only. In Beneish's own sample this ratio barely differed between the two groups and its weight in the model is negative, so it is not traffic-lighted.",
+        "innocent": "Not applicable: this ratio has weak discriminating power.",
+        "nextStep": ""
+      },
+      "TATA": {
+        "name": "Total accruals to total assets", "nonManipulator": 0.018, "manipulator": 0.031, "direction": "higher", "leg": "rationalisation",
+        "formula": "(NetIncome_t - CFO_t) / TotalAssets_t",
+        "plain": "Profit is running ahead of cash. The gap is made of accounting estimates rather than money received.",
+        "innocent": "A working-capital build for real growth, or a one-off timing difference around year-end.",
+        "nextStep": "Reconcile profit to operating cash flow line by line and see which working-capital item absorbed the cash."
+      },
+      "LVGI": {
+        "name": "Leverage index", "nonManipulator": 1.037, "manipulator": 1.111, "direction": "higher", "leg": "pressure",
+        "formula": "[(CurrentLiabilities_t + LongTermDebt_t) / TotalAssets_t] / [same for t-1]",
+        "plain": "Leverage rose. More debt means tighter covenants and more pressure. Note: its weight in the M-score is negative and was not statistically significant in the paper.",
+        "innocent": "Debt-funded expansion that has not started earning yet.",
+        "nextStep": "Check debt covenants and the repayment schedule in the borrowings note."
+      }
+    }
+  },
+  "models": {
+    "sloan": { "flagAbove": 0.1 },
+    "altman": {
+      "$comment": "Altman Z'' emerging-market score: 3.25 + 6.56*X1 + 3.26*X2 + 6.72*X3 + 1.05*X4.",
+      "intercept": 3.25, "x1": 6.56, "x2": 3.26, "x3": 6.72, "x4": 1.05, "distressBelow": 4.15, "safeAbove": 5.85
+    },
+    "piotroski": { "weakAtOrBelow": 3 },
+    "benford": { "minCount": 100 }
+  },
+  "scoring": {
+    "amberFraction": 0.5,
+    "legSaturation": 0.5,
+    "minLegWeight": 3,
+    "legWeights": { "pressure": 1, "opportunity": 1, "rationalisation": 1 },
+    "tiers": { "watchFrom": 30, "suspiciousFrom": 70 },
+    "legLevels": { "medFrom": 30, "highFrom": 70 },
+    "combos": [
+      {
+        "id": "CMB_CASHLESS_GROWTH", "anyOf": ["A2_CFO_PAT", "A3_CUM_CFO_PAT", "B1_REC_VS_SALES", "BEN_DSRI", "M1_MSCORE", "BEN_TATA"], "minLevel": "red", "minCount": 3, "add": 15,
+        "text": "Profit not backed by cash, receivables outrunning sales and an elevated M-score appear together. Each is weak alone; together they are a classic early pattern."
+      },
+      {
+        "id": "CMB_MANY_WEAK", "anyOf": "*", "minLevel": "amber", "minCount": 8, "add": 10,
+        "text": "Eight or more checks are at amber or worse. Several weak signals together deserve more attention than any one of them."
+      },
+      { "id": "CMB_TWO_MODELS", "modelsFlagging": 2, "floor": 50, "text": "Two independent models flag this company." },
+      { "id": "CMB_THREE_MODELS", "modelsFlagging": 3, "floor": 70, "text": "Three or more independent models flag this company." }
+    ],
+    "confidence": {
+      "start": 100, "highFrom": 75, "mediumFrom": 50,
+      "singleYear": 50, "twoYears": 20, "mScoreMissing": 20, "proxiesUsed": 20, "lowConfidenceFigures": 15, "integrityWarnings": 10,
+      "lowCoverage": 20, "lowCoverageBelow": 0.6, "opportunityNotAssessed": 10, "placeholderBenchmark": 5
+    }
+  },
+  "rules": [
+    {
+      "id": "M1_MSCORE", "battery": "Beneish", "title": "Beneish M-score", "formula": "MSCORE", "direction": "higher", "amber": -2.22, "red": -1.78,
+      "weight": 3, "severity": "high", "leg": "rationalisation", "format": "num",
+      "plain": "The eight Beneish ratios combined. Above -1.78, the accounts resemble those of companies that later restated earnings (in a 1980s-90s US sample).",
+      "innocent": "Fast-growing, acquisitive or working-capital-heavy companies often score high for honest reasons.",
+      "nextStep": "Open the Beneish tab and see which of the eight ratios drive the score."
+    },
+    {
+      "id": "A1_ACCRUALS", "battery": "A Earnings quality", "title": "Accruals ratio (Sloan)", "formula": "SLOAN", "direction": "higher", "amber": 0.05, "red": 0.1,
+      "weight": 1, "severity": "medium", "leg": "rationalisation", "format": "pct",
+      "plain": "The part of profit that did not arrive as cash, as a share of average assets. High-accrual profits have historically reversed more often.",
+      "innocent": "Working capital built up to support real growth.",
+      "nextStep": "Check whether the accrual build reverses in the next two half-year results."
+    },
+    {
+      "id": "A2_CFO_PAT", "battery": "A Earnings quality", "title": "Profit not backed by cash (CFO / PAT)", "formula": "when(netIncome > 0, cfo / netIncome)", "direction": "lower", "amber": 0.8, "red": 0.5,
+      "weight": 2, "severity": "high", "leg": "rationalisation", "format": "x", "benchmark": "cfoToPat",
+      "plain": "For every rupee of reported profit, this many rupees of cash came in from operations.",
+      "innocent": "One-off working-capital build, or advance tax and inventory stocking before a launch.",
+      "nextStep": "Ask why cash from operations lagged profit this year and whether it has caught up since."
+    },
+    {
+      "id": "A3_CUM_CFO_PAT", "battery": "A Earnings quality", "title": "Cumulative CFO / PAT (3 to 5 years)", "formula": "when(sum(netIncome, 3, 5) > 0, sum(cfo, 3, 5) / sum(netIncome, 3, 5))", "direction": "lower", "amber": 0.8, "red": 0.6,
+      "weight": 2, "severity": "high", "leg": "rationalisation", "format": "x",
+      "plain": "Over several years timing differences should wash out. Profit that never turns into cash over three to five years is the harder kind to explain.",
+      "innocent": "A long project cycle or sustained fast growth can hold cash conversion down for years.",
+      "nextStep": "Add up five years of profit and five years of operating cash flow from the annual reports and compare."
+    },
+    {
+      "id": "B1_REC_VS_SALES", "battery": "B Revenue quality", "title": "Receivables outpace sales", "formula": "growth(receivables) - growth(revenue)", "direction": "higher", "amber": 0.1, "red": 0.25,
+      "weight": 2, "severity": "high", "leg": "rationalisation", "format": "ppt",
+      "plain": "Receivables grew this many percentage points faster than sales.",
+      "innocent": "A large year-end order, a new customer segment with longer credit, or export growth.",
+      "nextStep": "Look for the split of receivables by age and by related vs unrelated customers."
+    },
+    {
+      "id": "B2_DSO_TREND", "battery": "B Revenue quality", "title": "Days sales outstanding rising", "formula": "365 * receivables / revenue - lag(365 * receivables / revenue, 1)", "direction": "higher", "amber": 10, "red": 25,
+      "weight": 1, "severity": "medium", "leg": "rationalisation", "format": "days",
+      "plain": "Customers are taking this many more days to pay than a year ago.",
+      "innocent": "Change in customer mix or deliberate credit extension.",
+      "nextStep": "Compare DSO with two or three listed peers."
+    },
+    {
+      "id": "B3_GROWTH_VS_SECTOR", "battery": "B Revenue quality", "title": "Growth far above sector", "formula": "growth(revenue) - bench(\"revenueGrowth\")", "direction": "higher", "amber": 0.15, "red": 0.3,
+      "weight": 1, "severity": "low", "leg": "pressure", "format": "ppt", "benchmark": "revenueGrowth",
+      "plain": "Sales growth exceeds the sector reference by this many percentage points.",
+      "innocent": "Market-share gains, new capacity or an acquisition.",
+      "nextStep": "Check whether volumes, capacity and headcount grew consistently with the sales claimed."
+    },
+    {
+      "id": "C1_CAPEX_DEP", "battery": "C Cost and asset games", "title": "Capex vs depreciation", "formula": "capex / depreciation", "direction": "higher", "amber": 3, "red": 5,
+      "weight": 1, "severity": "low", "leg": "rationalisation", "format": "x",
+      "plain": "Capital spending is this many times depreciation. Very high multiples can hide operating costs recorded as assets.",
+      "innocent": "A genuine expansion phase.",
+      "nextStep": "Match capex to commissioned capacity announced by the company."
+    },
+    {
+      "id": "C3_CWIP_SHARE", "battery": "C Cost and asset games", "title": "Capital work-in-progress share", "formula": "cwip / (ppe + cwip)", "direction": "higher", "amber": 0.25, "red": 0.4,
+      "weight": 1, "severity": "medium", "leg": "rationalisation", "format": "pct",
+      "plain": "This share of fixed assets is still 'under construction' and is not being depreciated.",
+      "innocent": "A large plant genuinely being built.",
+      "nextStep": "Read the CWIP ageing schedule (mandatory under Schedule III) for projects overdue or suspended."
+    },
+    {
+      "id": "C4_CWIP_AGED", "battery": "India pack", "title": "CWIP stuck for 3+ years (floor estimate)", "formula": "min(cwip, lag(cwip, 1), lag(cwip, 2), lag(cwip, 3)) / (ppe + cwip)", "direction": "higher", "amber": 0.1, "red": 0.2,
+      "weight": 1, "severity": "medium", "leg": "rationalisation", "format": "pct",
+      "plain": "At least this share of fixed assets has sat in work-in-progress in each of the last four balance sheets. Projects may have rotated, so this is an estimate from totals, not from the ageing note.",
+      "innocent": "Rolling multi-year projects where old ones finish as new ones start.",
+      "nextStep": "Use the CWIP ageing note to confirm how much is really older than three years."
+    },
+    {
+      "id": "C5_INTANGIBLES", "battery": "C Cost and asset games", "title": "Intangibles growing faster than sales", "formula": "growth(intangibles) - growth(revenue)", "direction": "higher", "amber": 0.15, "red": 0.3,
+      "weight": 1, "severity": "medium", "leg": "rationalisation", "format": "ppt",
+      "plain": "Intangible assets grew this many percentage points faster than sales. Capitalised development or software costs lift profit today.",
+      "innocent": "An acquisition or a real product-development programme.",
+      "nextStep": "Check the intangibles note for 'internally generated' additions."
+    },
+    {
+      "id": "D1_CASH_AND_DEBT", "battery": "D Balance sheet logic", "title": "Cash-rich yet borrowing", "formula": "min(cash, borrowings) / totalAssets", "direction": "higher", "amber": 0.1, "red": 0.2,
+      "weight": 1, "severity": "medium", "leg": "rationalisation", "format": "pct",
+      "plain": "The company holds large cash and large debt at once (the smaller of the two is this share of assets). Paying interest while sitting on cash needs a reason.",
+      "innocent": "Cash held in subsidiaries or overseas, earmarked for capex, or restricted as margin money.",
+      "nextStep": "Check how much of the cash is 'other bank balances', pledged or held by subsidiaries."
+    },
+    {
+      "id": "D2_YIELD_ON_CASH", "battery": "D Balance sheet logic", "title": "Return earned on cash and investments", "formula": "when((cash + investments) / totalAssets > 0.1, otherIncome / avg(cash + investments, lag(cash + investments, 1)))", "direction": "lower", "amber": 0.03, "red": 0.01,
+      "weight": 1, "severity": "medium", "leg": "rationalisation", "format": "pct",
+      "plain": "Other income as a return on average cash and investments. A very low return on a large balance raises the question of whether the balance was there all year.",
+      "innocent": "Balances built up only at year-end, or held in non-interest current accounts or strategic equity stakes.",
+      "nextStep": "Compare interest income in the notes with average month-end balances if disclosed."
+    },
+    {
+      "id": "D3_DEBT_WITH_PROFIT", "battery": "D Balance sheet logic", "title": "Debt rising while profit rises", "formula": "when(growth(netIncome) > 0, growth(borrowings))", "direction": "higher", "amber": 0.15, "red": 0.3,
+      "weight": 1, "severity": "medium", "leg": "pressure", "format": "pct",
+      "plain": "Borrowings grew this much in a year when profit also grew. Profitable companies that keep borrowing may not be generating the cash they report.",
+      "innocent": "Debt-funded capacity expansion.",
+      "nextStep": "See what the new borrowing funded: capex, working capital or loans to group companies."
+    },
+    {
+      "id": "D4_INTEREST_COVER", "battery": "D Balance sheet logic", "title": "Interest coverage", "formula": "when(interest > 0, (pbt + interest) / interest)", "direction": "lower", "amber": 3, "red": 1.5,
+      "weight": 2, "severity": "high", "leg": "pressure", "format": "x",
+      "plain": "Operating profit covers the interest bill this many times.",
+      "innocent": "A temporary dip in a cyclical business.",
+      "nextStep": "Check upcoming repayments and any covenant waivers mentioned in the notes."
+    },
+    {
+      "id": "E1_MARGIN_SMOOTH", "battery": "E Too good to be true", "title": "Unusually smooth margins", "formula": "sd((pbt + interest + depreciation - otherIncome) / revenue, 4, 5)", "direction": "lower", "amber": 0.01, "red": 0.005,
+      "weight": 1, "severity": "low", "leg": "rationalisation", "format": "ppt",
+      "plain": "Operating margin moved by only this much (standard deviation) over four to five years. Real businesses wobble.",
+      "innocent": "Regulated returns, long-term contracts or a dominant brand with pricing power.",
+      "nextStep": "Compare margin stability with the closest listed peers."
+    },
+    {
+      "id": "E2_RETURN_VS_SECTOR", "battery": "E Too good to be true", "title": "Return on equity far above sector", "formula": "when(avg(equity, lag(equity, 1)) > 0, netIncome / avg(equity, lag(equity, 1)) - bench(\"roe\"))", "direction": "higher", "amber": 0.15, "red": 0.3,
+      "weight": 1, "severity": "low", "leg": "pressure", "format": "ppt", "benchmark": "roe",
+      "plain": "Return on equity exceeds the sector reference by this many percentage points.",
+      "innocent": "A real competitive advantage, an asset-light model or high payout shrinking equity.",
+      "nextStep": "Identify what protects the excess return and whether peers confirm it."
+    },
+    {
+      "id": "E3_BENFORD", "battery": "E Too good to be true", "title": "Benford first-digit test (chi-square)", "formula": "BENFORD_CHI2", "direction": "higher", "amber": 15.51, "red": 20.09,
+      "weight": 0, "severity": "low", "leg": "rationalisation", "format": "num",
+      "plain": "First digits of the reported figures compared with Benford's law (chi-square, 8 degrees of freedom; 15.51 = 5% level, 20.09 = 1% level). NOT SCORED (weight 0): a company's line items over several years are strongly correlated, which breaks the test's independence assumption. On CLADES's own synthetic clean company it raised a false alarm, so it is shown for information only.",
+      "innocent": "Small samples and related line items routinely deviate from Benford's law.",
+      "nextStep": "Treat as a tie-breaker only; never act on this test alone."
+    },
+    {
+      "id": "G1_CASH_RECON", "battery": "G Cross-statement", "title": "Cash flow vs balance-sheet cash", "formula": "abs(netCashFlow - (cash - lag(cash, 1))) / totalAssets", "direction": "higher", "amber": 0.02, "red": 0.05,
+      "weight": 0.5, "severity": "low", "leg": "rationalisation", "format": "pct",
+      "plain": "Net cash flow differs from the change in balance-sheet cash by this share of assets.",
+      "innocent": "The balance sheet line often includes bank deposits that the cash flow statement excludes.",
+      "nextStep": "Reconcile cash and cash equivalents using the note to the cash flow statement."
+    },
+    {
+      "id": "G2_TAX_RATE", "battery": "G Cross-statement", "title": "Effective tax rate", "formula": "when(pbt > 0, tax / pbt)", "direction": "lower", "amber": 0.15, "red": 0.08,
+      "weight": 1, "severity": "medium", "leg": "rationalisation", "format": "pct",
+      "plain": "Tax charged as a share of pre-tax profit. Profit that the tax authorities are not asked to tax deserves a look.",
+      "innocent": "SEZ or other tax holidays, brought-forward losses, MAT credit or deferred-tax adjustments.",
+      "nextStep": "Read the tax reconciliation note and compare tax paid in the cash flow statement."
+    },
+    {
+      "id": "G3_DIVIDEND_COVER", "battery": "G Cross-statement", "title": "Dividends covered by operating cash", "formula": "when(dividends > 0, cfo / dividends)", "direction": "lower", "amber": 1.5, "red": 1,
+      "weight": 1, "severity": "medium", "leg": "rationalisation", "format": "x",
+      "plain": "Operating cash flow covers the dividend this many times. Below 1, dividends were funded from borrowings or reserves of cash.",
+      "innocent": "A special dividend, or a temporary cash-flow dip in a company with ample cash.",
+      "nextStep": "Check whether borrowings rose in the year the dividend was paid."
+    },
+    {
+      "id": "G4_INTEREST_RATE", "battery": "G Cross-statement", "title": "Implied interest rate on debt", "formula": "when(avg(borrowings, lag(borrowings, 1)) / totalAssets > 0.1, interest / avg(borrowings, lag(borrowings, 1)))", "direction": "lower", "amber": 0.05, "red": 0.03,
+      "weight": 1, "severity": "medium", "leg": "rationalisation", "format": "pct",
+      "plain": "Interest expense as a rate on average debt. A rate far below market suggests interest is being capitalised into assets rather than expensed.",
+      "innocent": "Low-cost foreign-currency loans, interest-free group loans, or debt drawn late in the year.",
+      "nextStep": "Find 'borrowing costs capitalised' in the PPE or finance-cost note."
+    },
+    {
+      "id": "I1_OTHER_INCOME", "battery": "India pack", "title": "Other income share of profit", "formula": "when(pbt > 0, otherIncome / pbt)", "direction": "higher", "amber": 0.25, "red": 0.5,
+      "weight": 1, "severity": "medium", "leg": "rationalisation", "format": "pct",
+      "plain": "This share of pre-tax profit comes from 'other income' rather than the business itself.",
+      "innocent": "A cash-rich company earning treasury income, or a one-off asset sale.",
+      "nextStep": "Break other income into interest, gains on sale and anything described as 'miscellaneous'."
+    },
+    {
+      "id": "I2_PLEDGE", "battery": "India pack", "title": "Promoter shares pledged", "formula": "promoterPledgePct", "direction": "higher", "amber": 10, "red": 30,
+      "weight": 2, "severity": "high", "leg": "opportunity", "format": "pctpoints",
+      "plain": "This percentage of the promoters' holding is pledged to lenders. A falling share price can then force the promoters' hand.",
+      "innocent": "Pledges backing loans for the company's own expansion.",
+      "nextStep": "Check the latest shareholding pattern filing for the trend in pledged shares."
+    },
+    {
+      "id": "I3_RELATED_LOANS", "battery": "India pack", "title": "Loans and advances to promoter entities", "formula": "when(equity > 0, relatedPartyLoans / equity)", "direction": "higher", "amber": 0.05, "red": 0.15,
+      "weight": 2, "severity": "high", "leg": "opportunity", "format": "pct",
+      "plain": "Loans and advances to related parties equal this share of net worth. Money can leave a listed company this way.",
+      "innocent": "Funding of a subsidiary's genuine project on arm's-length terms.",
+      "nextStep": "Read the related-party note: who received the money, on what terms, and has any been repaid?"
+    },
+    {
+      "id": "I4_CONTINGENT", "battery": "India pack", "title": "Contingent liabilities vs net worth", "formula": "when(equity > 0, contingentLiabilities / equity)", "direction": "higher", "amber": 0.25, "red": 0.5,
+      "weight": 1, "severity": "medium", "leg": "opportunity", "format": "pct",
+      "plain": "Off-balance-sheet contingent liabilities equal this share of net worth.",
+      "innocent": "Routine tax disputes and bank guarantees common in the industry.",
+      "nextStep": "Check for corporate guarantees given for group companies' loans."
+    },
+    {
+      "id": "P1_ALTMAN", "battery": "Distress", "title": "Altman Z'' (emerging markets)", "formula": "ALTMAN_Z", "direction": "lower", "amber": 5.85, "red": 4.15,
+      "weight": 2, "severity": "high", "leg": "pressure", "format": "num",
+      "plain": "A distress score. Below 4.15 is the distress zone, above 5.85 the safe zone. Companies in distress have the strongest motive to flatter results.",
+      "innocent": "Capital-intensive businesses in an investment phase can sit in the grey zone for years.",
+      "nextStep": "Check liquidity: cash, undrawn credit lines and debt due within a year."
+    },
+    {
+      "id": "P2_PIOTROSKI", "battery": "Quality", "title": "Piotroski F-score", "formula": "PIOTROSKI_F", "direction": "lower", "amber": 4, "red": 3,
+      "weight": 1, "severity": "medium", "leg": "pressure", "format": "int",
+      "plain": "Nine simple pass/fail tests of profitability, leverage and efficiency. Three or fewer is weak.",
+      "innocent": "One bad year in a cyclical business drags several of the nine tests at once.",
+      "nextStep": "See which of the nine tests failed and whether they share one cause."
+    }
+  ]
 }

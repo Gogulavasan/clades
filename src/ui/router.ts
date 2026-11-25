@@ -10,6 +10,7 @@ export type Route =
   | { name: 'home' }
   | { name: 'case'; id: string; tab: CaseTab }
   | { name: 'portfolio' }
+  | { name: 'confirm' }
   | { name: 'validation' }
   | { name: 'privacy' }
   | { name: 'help' }
@@ -37,7 +38,7 @@ export function parseRoute(hash: string): Route {
     return isCaseTab(tab) ? { name: 'case', id: a || NO_CASE, tab } : notfound;
   }
   if (parts.length !== 1) return notfound;
-  if (head === 'portfolio' || head === 'validation' || head === 'privacy' || head === 'help') return { name: head };
+  if (head === 'confirm' || head === 'portfolio' || head === 'validation' || head === 'privacy' || head === 'help') return { name: head };
   return notfound;
 }
 
