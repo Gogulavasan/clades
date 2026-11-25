@@ -1,0 +1,18 @@
+node_modules/
+dist/
+coverage/
+*.local
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Python (offline research only)
+__pycache__/
+.venv/
+.ipynb_checkpoints/
+
+# Never commit raw vendor data or real filings. Keep them here locally.
+data/raw/
+private/
+tests/fixtures/private/

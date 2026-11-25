@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- No third-party network access: uploads are analysed in this tab and never sent anywhere. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
+    <meta name="description" content="CLADES: a browser-only forensic accounting screen for Indian listed non-financial companies." />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Ctext x='3' y='13' font-family='monospace' font-size='13' fill='%23FFB000'%3EC%3C/text%3E%3C/svg%3E" />
+    <title>CLADES Forensic Screen</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <noscript>CLADES runs entirely in your browser and needs JavaScript enabled.</noscript>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

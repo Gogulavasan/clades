@@ -1,0 +1,5 @@
+{
+  "$comment": "CLADES rule library. Every threshold, weight and explanation lives here so rules can be added, tuned or disabled without code changes. Rules are added from build 3 onward.",
+  "version": "0.1.0",
+  "rules": []
+}
