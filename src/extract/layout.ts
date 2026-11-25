@@ -45,12 +45,20 @@ function rows(items: TextItem[]): TextItem[][] {
   return out;
 }
 
+/**
+ * Some fonts export a drop capital as its own glyph run, giving "t otal Assets" or "F inancial S tatements".
+ * A lone letter followed by a lower-case word is rejoined. "a", "A" and "I" are real words and are left alone.
+ */
+export const repairSplitWords = (line: string): string => line.replace(/(^|[\s(])([b-hj-zB-HJ-Z]) (?=[a-z]{2})/g, '$1$2');
+
 const toLines = (items: TextItem[]): string[] =>
   rows(items).map((r) =>
-    r
-      .sort((a, b) => a.x - b.x)
-      .map((i) => i.str.trim())
-      .join(' '),
+    repairSplitWords(
+      r
+        .sort((a, b) => a.x - b.x)
+        .map((i) => i.str.trim())
+        .join(' '),
+    ),
   );
 
 /** x positions of empty vertical gutters that separate text columns. */

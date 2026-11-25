@@ -5,8 +5,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import { checkIntegrity } from '../src/confirm/integrity';
-import { buildPage, findGutters, type PdfPage, type TextItem } from '../src/extract/layout';
-import { extractFromPages, scanText, splitLine } from '../src/extract/pdf';
+import { buildCaseFile, DEFAULT_OPTIONS } from '../src/casefile/build';
+import { buildPage, findGutters, repairSplitWords, type PdfPage, type TextItem } from '../src/extract/layout';
+import { extractFromPages, findUnit, scanText, splitLine } from '../src/extract/pdf';
 import { parseGrid } from '../src/ingest/grid';
 import { autoMap, defaultMeta, standardise } from '../src/standardise/standardise';
 import report from './fixtures/synthetic-report.json';
@@ -174,5 +175,54 @@ describe('labels seen in real reports', () => {
     expect(ids('Term loans are secured by pledge of shares to the extent of 51% of the paid up equity of the project company.')).toEqual([]);
     expect(ids('During the year the promoters have pledged 12% of their holding.')).toEqual(['F7_PLEDGE']);
     expect(ids('45 percent of the shares held by the promoters have been pledged with lenders.')).toEqual(['F7_PLEDGE']);
+  });
+});
+
+describe('captions and glyph damage seen across seven years of one company', () => {
+  it('rejoins words split by a drop capital, leaving real one-letter words alone', () => {
+    expect(repairSplitWords('t otal Assets')).toBe('total Assets');
+    expect(repairSplitWords('n on-current l iabilities')).toBe('non-current liabilities');
+    expect(repairSplitWords('(2,377.18) F inancial S tatements')).toBe('(2,377.18) Financial Statements');
+    expect(repairSplitWords('a loan to I think Class B Equity')).toBe('a loan to I think Class B Equity');
+  });
+
+  it('drops a margin tab after the figures, a "Less:" prefix and trailing note references', () => {
+    expect(splitLine('Net cash (used in) financing activities (C) (2,377.18) (4,663.44) Financial Statements')).toEqual({ label: 'Net cash (used in) financing activities (C)', numbers: [-2377.18, -4663.44] });
+    expect(splitLine('Less: Income tax (Paid) (Net) (57.82) (5.55)').label).toBe('Income tax (Paid) (Net)');
+    expect(splitLine('Depreciation and Amortisation Expense 4.1, 4.2 and 3,303.68 3,931.33')).toEqual({ label: 'Depreciation and Amortisation Expense', numbers: [3303.68, 3931.33] });
+    expect(splitLine('Revenue grew strongly this year').numbers).toEqual([]); // prose is not a table row
+  });
+
+  it('reads the unit when the rupee sign has become a stray glyph', () => {
+    expect(findUnit(['All amounts are in H Crores, unless otherwise stated'])).toBe('crore');
+    expect(findUnit(['( ` in crore)'])).toBe('crore');
+  });
+
+  it('maps a power producer’s captions', () => {
+    const fields = (section: 'pl' | 'cf', labels: string[]) => {
+      const table = { fileName: 'f', sheetName: 's', layout: 'pdf' as const, company: null, periods: ['FY2025'], rows: labels.map((label, index) => ({ index, section, label, values: [1] })), notes: [] };
+      return Object.values(autoMap(table)).map((m) => (m ? `${m.sign < 0 ? '-' : ''}${m.field}` : null));
+    };
+    expect(fields('pl', ['Fuel Cost', 'Purchase of Stock-in-trade / Power for resale', 'Transmission Charges', 'Finance Costs (Net)'])).toEqual(['cogs', 'cogs', 'cogs', 'interest']);
+    expect(fields('pl', ['Profit / (Loss) before tax and Deferred tax recoverable from future tariff', 'Profit / (Loss) for the year', 'Total Tax (Credit)'])).toEqual(['pbt', 'netIncome', 'tax']);
+    expect(fields('pl', ['Profit / (Loss) from operations before exceptional item, tax and Deferred tax'])).toEqual([null]);
+    expect(fields('cf', ['Capital expenditure on payment towards Property, Plant and', 'Payment towards acquisition of Property, Plant and Equipment', 'Income tax (Paid) (Net)', 'Income tax Refund / (Paid)'])).toEqual(['-capex', '-capex', '-taxPaid', '-taxPaid']);
+    expect(fields('cf', ['Net (decrease) / increase in cash and cash equivalents (A)+(B)+(C)'])).toEqual(['netCashFlow']);
+  });
+
+  it('counts assets held for sale in the balance-sheet split when they are reported', () => {
+    const table = parseGrid([['Particulars', 'FY2024', 'FY2025'], ['Total non-current assets', 600, 610], ['Total current assets', 300, 320], ['Assets held for sale', 100, null], ['Total assets', 1000, 930]], 'f', 's');
+    const rep = checkIntegrity(standardise(table, autoMap(table), defaultMeta(table)));
+    expect(rep.checks.filter((c) => c.id === 'BS_SPLIT_ASSETS').map((c) => c.status)).toEqual(['pass', 'pass']);
+    const wrong = parseGrid([['Particulars', 'FY2024', 'FY2025'], ['Total non-current assets', 600, 610], ['Total current assets', 300, 320], ['Total assets', 1000, 930]], 'f', 's');
+    expect(checkIntegrity(standardise(wrong, autoMap(wrong), defaultMeta(wrong))).checks.find((c) => c.id === 'BS_SPLIT_ASSETS')?.status).toBe('fail');
+  });
+
+  it('ignores growth in an immaterial intangibles balance', () => {
+    const table = parseGrid([['Particulars', 'FY2024', 'FY2025'], ['Revenue from operations', 1000, 1000], ['Intangible assets', 1, 3], ['Total assets', 5000, 5000]], 'f', 's');
+    const cf = buildCaseFile(standardise(table, autoMap(table), defaultMeta(table)), DEFAULT_OPTIONS, 'now');
+    expect(cf.rules.find((r) => r.id === 'C5_INTANGIBLES')?.level).toBe('na'); // 0.06% of assets: tripling it means nothing
+    const big = parseGrid([['Particulars', 'FY2024', 'FY2025'], ['Revenue from operations', 1000, 1000], ['Intangible assets', 400, 800], ['Total assets', 5000, 5000]], 'f', 's');
+    expect(buildCaseFile(standardise(big, autoMap(big), defaultMeta(big)), DEFAULT_OPTIONS, 'now').rules.find((r) => r.id === 'C5_INTANGIBLES')?.level).toBe('red');
   });
 });

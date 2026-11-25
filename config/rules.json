@@ -1,6 +1,6 @@
 {
   "$comment": "CLADES rule library. Every threshold, weight and explanation lives here. Rules can be added (formula language: see src/rules/formula.ts), tuned or disabled ('enabled': false) without code changes. Weights and amber/red cut-offs are the author's judgment, NOT calibrated on Indian data; the back-test (build 8) exists to challenge them.",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "beneish": {
     "$comment": "Beneish (1999), 'The Detection of Earnings Manipulation', Financial Analysts Journal 55(5). Reference means below: verify against the paper; US sample; recalibrate on Indian data.",
     "intercept": -4.84,
@@ -182,9 +182,9 @@
       "nextStep": "Use the CWIP ageing note to confirm how much is really older than three years."
     },
     {
-      "id": "C5_INTANGIBLES", "battery": "C Cost and asset games", "title": "Intangibles growing faster than sales", "formula": "growth(intangibles) - growth(revenue)", "direction": "higher", "amber": 0.15, "red": 0.3,
+      "id": "C5_INTANGIBLES", "battery": "C Cost and asset games", "title": "Intangibles growing faster than sales", "formula": "when(intangibles / totalAssets > 0.01, growth(intangibles) - growth(revenue))", "direction": "higher", "amber": 0.15, "red": 0.3,
       "weight": 1, "severity": "medium", "leg": "rationalisation", "format": "ppt",
-      "plain": "Intangible assets grew this many percentage points faster than sales. Capitalised development or software costs lift profit today.",
+      "plain": "Intangible assets grew this many percentage points faster than sales. Capitalised development or software costs lift profit today. Only assessed when intangibles are at least 1% of total assets, so a tiny balance doubling is ignored.",
       "innocent": "An acquisition or a real product-development programme.",
       "nextStep": "Check the intangibles note for 'internally generated' additions."
     },

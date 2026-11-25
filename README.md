@@ -22,7 +22,7 @@ Live: https://gogulavasan.github.io/clades/
 | 8 | Offline benchmark builder and back-test tooling | Done (awaiting real data) |
 
 Still open, and labelled as such in the app: the back-test has **not been run** (no hand-entered case data yet), sector
-benchmarks are placeholders, the PDF route has been tested on a synthetic report and one real annual report, and the Families panel,
+benchmarks are placeholders, the PDF route has been tested on a synthetic report and eight real annual reports from two companies, and the Families panel,
 auditor tenure/size and receivables-ageing checks are not built.
 
 ![Company report](docs/screenshots/company-report.jpg)
@@ -155,10 +155,15 @@ source must be "GitHub Actions".
   finds nothing has not established that nothing is there.
 - **The honest-profit bridge is a stress test.** Its "soft assets" bucket also contains genuine investments and
   goodwill, and its default percentages are arbitrary.
-- **Tested on one real annual report only.** A 395-page integrated report exposed five extraction failures (two-page
-  spreads, multi-column prose, roman-numeral section headings, unlabelled subtotals, and a standalone statement set
-  printed before the consolidated one). Each is fixed and covered by a regression test built from synthetic content,
-  but one report is not a sample: other layouts will break it in new ways. No real Screener export has been tested.
+- **Tested on eight real annual reports from two companies.** They exposed, among others: two-page spreads,
+  multi-column prose, roman-numeral section headings, unlabelled subtotals, a standalone statement set printed before
+  the consolidated one, drop-capital glyphs that split words ("t otal Assets"), margin tabs trailing the figures, a
+  rupee sign exported as a stray letter, and sector-specific captions ("Fuel cost"). Each is fixed and covered by a
+  regression test built from synthetic content. Two companies from one group is still not a sample: other layouts will
+  break it in new ways. No real Screener export has been tested.
+- **Comparatives get restated.** The same year can differ between its own report and the next year's comparative
+  column (regrouping or restatement). CLADES reads one report at a time; a multi-year series should use each year as
+  first filed.
 - **Exceptional items are not adjusted.** A large one-off gain (for example on selling an investment) sits in profit
   while its cash sits in investing activities, so CFO/PAT looks weak for an innocent reason. Likewise, capex far above
   depreciation is normal for a company building infrastructure. Read the innocent explanation beside each flag.

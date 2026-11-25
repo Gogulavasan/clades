@@ -42,6 +42,8 @@ export const FIELD_DEFS = {
   receivables: ['bs', 'Trade receivables'],
   inventory: ['bs', 'Inventory'],
   cash: ['bs', 'Cash & bank'],
+  assetsHeldForSale: ['bs', 'Assets held for sale'],
+  liabilitiesHeldForSale: ['bs', 'Liabilities held for sale'],
   totalAssets: ['bs', 'Total assets'],
   cfo: ['cf', 'Cash from operations (CFO)'],
   cfi: ['cf', 'Cash from investing'],

@@ -24,6 +24,8 @@ interface Spec {
   blocking: boolean;
   /** Sum of left terms should equal sum of right terms. */
   left: readonly Term[];
+  /** Added to the left side when reported; ignored when absent. */
+  optional?: readonly Term[];
   right: readonly Term[];
 }
 
@@ -33,10 +35,10 @@ const SPECS: readonly Spec[] = [
     id: 'BS_LIAB_SUM', label: 'Liabilities side adds up', blocking: true,
     left: [['shareCapital', 1], ['reserves', 1], ['borrowings', 1], ['otherLiabilities', 1]], right: [['totalLiabilitiesEquity', 1]],
   },
-  { id: 'BS_SPLIT_ASSETS', label: 'Non-current + current assets = total assets', blocking: true, left: [['nonCurrentAssets', 1], ['currentAssets', 1]], right: [['totalAssets', 1]] },
+  { id: 'BS_SPLIT_ASSETS', label: 'Non-current + current assets = total assets', blocking: true, left: [['nonCurrentAssets', 1], ['currentAssets', 1]], optional: [['assetsHeldForSale', 1]], right: [['totalAssets', 1]] },
   {
     id: 'BS_SPLIT_LIAB', label: 'Equity + non-current + current liabilities = total', blocking: true,
-    left: [['equity', 1], ['nonCurrentLiabilities', 1], ['currentLiabilities', 1]], right: [['totalLiabilitiesEquity', 1]],
+    left: [['equity', 1], ['nonCurrentLiabilities', 1], ['currentLiabilities', 1]], optional: [['liabilitiesHeldForSale', 1]], right: [['totalLiabilitiesEquity', 1]],
   },
   { id: 'BS_ASSET_SUM', label: 'Assets side adds up', blocking: true, left: [['ppe', 1], ['cwip', 1], ['investments', 1], ['otherAssets', 1]], right: [['totalAssets', 1]] },
   {
@@ -68,7 +70,9 @@ export function checkIntegrity(company: Company): IntegrityReport {
     const assets = y.figures.totalAssets?.value;
     const tol = Math.max(cfg.toleranceAbs, cfg.tolerancePctOfAssets * Math.abs(assets ?? 0));
     for (const s of SPECS) {
-      const l = sum(y.figures, s.left);
+      const base = sum(y.figures, s.left);
+      const extra = (s.optional ?? []).reduce((a, [f, sign]) => a + sign * (y.figures[f]?.value ?? 0), 0);
+      const l = base === null ? null : base + extra;
       const r = sum(y.figures, s.right);
       if (l === null || r === null) {
         checks.push({ id: s.id, label: s.label, year: y.label, status: 'not_run', blocking: s.blocking, detail: 'Not run: one or more lines are missing.' });

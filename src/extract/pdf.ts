@@ -46,6 +46,7 @@ const BS_SECTIONS: ReadonlyArray<readonly [RegExp, string]> = [
 
 const SUBTOTAL_SECTIONS = new Set(['Non-current assets', 'Current assets', 'Non-current liabilities', 'Current liabilities']);
 const NUMERIC = /^\(?-?(\d[\d,]*\.?\d*|\.\d+)\)?$/;
+const MAX_MARGIN_WORDS = 3;
 const NIL = /^[-–—]$/;
 const ROMAN = /^[IVX]{1,4}\s+(?=[A-Za-z])/;
 /** A notes page can repeat statement words ("net cash from operating activities" in a discontinued-operations note). */
@@ -60,6 +61,16 @@ export function splitLine(line: string): { label: string; numbers: number[] } {
   const tokens = line.trim().split(/\s+/);
   const numbers: number[] = [];
   let end = tokens.length;
+  // A section tab printed in the page margin ("... (2,377.18) (4,663.44) Financial Statements") can trail the figures:
+  // up to three plain words after two or more numbers are dropped.
+  for (let cut = 1; cut <= MAX_MARGIN_WORDS && cut < tokens.length - 2; cut++) {
+    const tail = tokens.slice(-cut);
+    const before = tokens.slice(-cut - 2, -cut);
+    if (tail.every((t) => /^[A-Za-z]+$/.test(t)) && before.every((t) => NUMERIC.test(t) && /[.,(]/.test(t))) {
+      end = tokens.length - cut;
+      break;
+    }
+  }
   while (end > 0) {
     const t = tokens[end - 1] ?? '';
     if (NIL.test(t)) numbers.unshift(0);
@@ -69,7 +80,9 @@ export function splitLine(line: string): { label: string; numbers: number[] } {
   }
   let label = tokens.slice(0, end).join(' ');
   for (let i = 0; i < 2; i++) label = label.replace(ENUMERATOR, '').replace(ROMAN, '');
-  return { label: label.replace(/[:.\s]+$/, '').trim(), numbers };
+  // "Less: Income tax paid", and note references left at the end of a caption ("... Expense 4.1, 4.2 and").
+  label = label.replace(/^(less|add)\s*:\s*/i, '').replace(/(\s+(\d+(\.\d+)?,?|and|&))+$/i, '');
+  return { label: label.replace(/[:.,\s]+$/, '').trim(), numbers };
 }
 
 /** One readable unit: a whole page, or one half of a two-page spread. */
@@ -119,7 +132,8 @@ export function findPeriods(lines: string[]): [string, string] | null {
 }
 
 export function findUnit(lines: string[]): UnitId | null {
-  const m = /(?:\bin|₹|\brs\.?|\binr)\s*(?:in\s+)?(crores?|lakhs?|lacs?|millions?|thousands?)\b/i.exec(lines.join(' '));
+  // The rupee sign often comes out of a PDF as a stray glyph ("in H Crores", "( ` in crore)"), so one may sit before the unit.
+  const m = /(?:\bin|₹|`|\brs\.?|\binr)\s*(?:\S{1,2}\s+)?(?:in\s+)?(crores?|lakhs?|lacs?|millions?|thousands?)\b/i.exec(lines.join(' '));
   const w = m?.[1]?.toLowerCase() ?? '';
   return w.startsWith('crore') ? 'crore' : w.startsWith('la') ? 'lakh' : w.startsWith('million') ? 'million' : w.startsWith('thousand') ? 'thousand' : null;
 }
