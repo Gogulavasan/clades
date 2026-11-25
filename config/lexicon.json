@@ -1,0 +1,67 @@
+{
+  "$comment": "Deterministic keyword/regex lexicons for annual-report text (PDF route only). 'flags' become Opportunity-leg rules; every match is shown with the quoted sentence and its page. A sentence containing a negator shortly before the match (e.g. 'has not defaulted') is skipped. 'claims' are upbeat management statements shown against a contradicting figure. Patterns are case-insensitive.",
+  "negators": "\\b(no|not|nor|never|without|neither|none)\\b[^.;]{0,80}$",
+  "maxQuotesPerRule": 3,
+  "flags": [
+    {
+      "id": "F1_AUDIT_MODIFIED", "title": "Auditor's opinion is modified", "pattern": "\\b(basis for qualified opinion|qualified opinion|adverse opinion|disclaimer of opinion)\\b", "level": "red", "weight": 3,
+      "plain": "The auditor did not give a clean opinion. This is the single strongest text signal in an annual report.",
+      "innocent": "A narrow qualification on one disputed item that management has explained and since resolved.",
+      "nextStep": "Read the 'Basis for qualified opinion' paragraph in full and size the amount against profit."
+    },
+    {
+      "id": "F2_GOING_CONCERN", "title": "Going-concern doubt", "pattern": "\\b(material uncertainty related to going concern|significant doubt (on|about|upon) the (company|group|holding company)('s|s)? ability to continue as (a )?going concern)\\b", "level": "red", "weight": 3,
+      "plain": "The report raises doubt about the company's ability to keep operating.",
+      "innocent": "A start-up or turnaround with committed funding from its parent.",
+      "nextStep": "Check the funding plan management cites and whether lenders have agreed to it."
+    },
+    {
+      "id": "F3_EMPHASIS", "title": "Emphasis of matter", "pattern": "\\bemphasis of matters?\\b", "level": "amber", "weight": 1,
+      "plain": "The auditor drew readers' attention to a specific note without modifying the opinion.",
+      "innocent": "Often a routine pointer to a merger, a restatement of comparatives or a pending litigation.",
+      "nextStep": "Read the note the auditor points to."
+    },
+    {
+      "id": "F4_AUDITOR_CHANGE", "title": "Auditor resigned or changed mid-term", "pattern": "\\b(resign(ed|ation) of (the )?(statutory )?auditors?|(statutory )?auditors? (have |has )?resigned|casual vacancy (caused|arising|created)[^.;]{0,60}auditors?)\\b", "level": "amber", "weight": 2,
+      "plain": "The statutory auditor left before the end of the term.",
+      "innocent": "Mandatory rotation after the maximum tenure, or a firm merger.",
+      "nextStep": "Find the resignation letter filed with the stock exchange and the reason given."
+    },
+    {
+      "id": "F5_DEFAULT", "title": "Default on loans or statutory dues", "pattern": "\\b(default(ed|s)? in (the )?(repayment|payment) of (loans?|borrowings?|interest|dues)|undisputed statutory dues[^.;]{0,80}outstanding for (a period of )?more than six months)\\b", "level": "red", "weight": 2,
+      "plain": "The report mentions a default on borrowings or long-overdue statutory dues.",
+      "innocent": "A short technical delay that was cured before the report date.",
+      "nextStep": "Check the amount, the lender and whether the default was continuing at year-end."
+    },
+    {
+      "id": "F6_RELATED_LOANS", "title": "Loans or guarantees to related parties", "pattern": "\\b(loans?( and advances)?( given| granted| provided)? to (related parties|promoters?|directors?|(companies|firms|entities|parties) in which (the )?directors? (are|is) interested)|corporate guarantees? (given|issued|provided) (on behalf of|for|to) (related parties|group companies|subsidiaries|promoter))\\b", "level": "amber", "weight": 2,
+      "plain": "Money or guarantees have gone to parties connected with the promoters or directors.",
+      "innocent": "Funding of a wholly owned subsidiary's project on arm's-length terms.",
+      "nextStep": "Size the balance against net worth using the related-party note and check repayments."
+    },
+    {
+      "id": "F7_PLEDGE", "title": "Promoter share pledge mentioned", "pattern": "\\b(pledge of (the )?(promoters?'? ?)?(equity )?shares|shares (held by (the )?promoters? )?(have been|has been|are|were) pledged|promoters? (have|has) pledged)\\b", "level": "amber", "weight": 1,
+      "plain": "The report mentions promoter shares pledged with lenders.",
+      "innocent": "Pledges backing loans taken for the company's own expansion.",
+      "nextStep": "Enter the pledge percentage from the shareholding pattern on the confirm screen."
+    },
+    {
+      "id": "F8_DELAY", "title": "Delayed filing or meeting", "pattern": "\\b(delay(ed|s)? in (the )?(filing|submission|holding|publication)|extension of time (for|to) (holding|hold|filing|file)|not (been )?(filed|submitted) within the (prescribed|due|stipulated))\\b", "level": "amber", "weight": 1,
+      "plain": "The report mentions a delayed filing, results or annual meeting.",
+      "innocent": "A regulator-wide extension (as in FY2020-FY2021) or a system outage.",
+      "nextStep": "Check stock-exchange announcements for the stated reason for the delay."
+    },
+    {
+      "id": "F9_KAM_REVENUE", "title": "Key audit matter on revenue or receivables", "pattern": "\\bkey audit matters?\\b[^.;]{0,200}\\b(revenue recognition|trade receivables|related party)\\b", "level": "amber", "weight": 0,
+      "plain": "The auditor listed revenue, receivables or related parties as a key audit matter. Most reports do, so this is shown for information and carries no weight.",
+      "innocent": "Revenue is a presumed risk in almost every audit.",
+      "nextStep": "Read how the auditor says the matter was addressed."
+    }
+  ],
+  "claims": [
+    { "id": "C_CASH", "label": "cash generation", "pattern": "\\b(strong|robust|healthy|record|excellent) (operating )?cash (flows?|generation|position)\\b", "contradictedBy": "A2_CFO_PAT" },
+    { "id": "C_BALANCE", "label": "balance-sheet strength", "pattern": "\\b(strong|robust|healthy|solid|comfortable) (balance sheet|liquidity( position)?|financial position)\\b", "contradictedBy": "P1_ALTMAN" },
+    { "id": "C_MARGIN", "label": "margins", "pattern": "\\b(improved|improving|expanded|expanding|higher|better) (gross |operating )?margins?\\b", "contradictedBy": "BEN_GMI" },
+    { "id": "C_COLLECT", "label": "collections", "pattern": "\\b(improved|faster|efficient|strong) (collections?|receivables? management|working capital management)\\b", "contradictedBy": "B2_DSO_TREND" }
+  ]
+}

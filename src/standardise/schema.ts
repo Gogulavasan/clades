@@ -27,7 +27,9 @@ export const FIELD_DEFS = {
   equity: ['bs', 'Total equity (net worth)'],
   borrowings: ['bs', 'Total borrowings'],
   longTermDebt: ['bs', 'Long-term debt'],
+  shortTermDebt: ['bs', 'Short-term borrowings'],
   otherLiabilities: ['bs', 'Other liabilities'],
+  nonCurrentLiabilities: ['bs', 'Non-current liabilities (total)'],
   currentLiabilities: ['bs', 'Current liabilities'],
   totalLiabilitiesEquity: ['bs', 'Total liabilities & equity'],
   ppe: ['bs', 'Property, plant & equipment (net)'],
@@ -35,6 +37,7 @@ export const FIELD_DEFS = {
   intangibles: ['bs', 'Intangible assets'],
   investments: ['bs', 'Investments'],
   otherAssets: ['bs', 'Other assets'],
+  nonCurrentAssets: ['bs', 'Non-current assets (total)'],
   currentAssets: ['bs', 'Current assets'],
   receivables: ['bs', 'Trade receivables'],
   inventory: ['bs', 'Inventory'],
@@ -74,6 +77,14 @@ export interface Figure {
   edited?: boolean;
 }
 
+/** A sentence found in the annual report text by a lexicon pattern, quoted with its page. */
+export interface TextHit {
+  id: string;
+  kind: 'flag' | 'claim';
+  sentence: string;
+  page: number;
+}
+
 export type YearData = Partial<Record<FieldId, Figure>>;
 export type Basis = 'consolidated' | 'standalone' | 'unknown';
 
@@ -86,4 +97,7 @@ export interface Company {
   /** Oldest first. */
   years: { label: string; figures: YearData }[];
   sample?: boolean;
+  /** Set only when annual-report text was read (PDF route): pages scanned and lexicon matches. */
+  textPages?: number;
+  textHits?: TextHit[];
 }

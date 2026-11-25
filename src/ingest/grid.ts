@@ -11,12 +11,15 @@ export interface SourceRow {
   label: string;
   /** Aligned with SourceTable.periods. */
   values: (number | null)[];
+  /** PDF route: page the row was read from, and how sure the extraction is. */
+  page?: number;
+  confidence?: 'high' | 'medium' | 'low';
 }
 
 export interface SourceTable {
   fileName: string;
   sheetName: string;
-  layout: 'screener' | 'generic';
+  layout: 'screener' | 'generic' | 'pdf' | 'manual';
   company: string | null;
   periods: string[];
   rows: SourceRow[];

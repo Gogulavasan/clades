@@ -1,6 +1,10 @@
 /** Every user action in the main area. Elements opt in with data-act="name". */
 import { buildCaseFile, DEFAULT_OPTIONS } from '../casefile/build';
+import { extractFromPages } from '../extract/pdf';
 import { readWorkbook } from '../ingest/file';
+import type { SourceTable } from '../ingest/grid';
+import { parsePriceCsv } from '../ingest/price';
+import { RULES } from '../rules/config';
 import { parseNumber } from '../ingest/grid';
 import { isFieldId } from '../standardise/schema';
 import { UNIT_IDS, autoMap, defaultMeta, editKey, standardise, type UnitId } from '../standardise/standardise';
@@ -8,7 +12,8 @@ import { SAMPLE_PROFILES, gridToCsv, sampleGrid } from '../storage/sample';
 import { STATUSES, type Outcome, type Status } from '../storage/store';
 import { draftCompany } from './confirm';
 import { quarantineCsv, quarantined } from './portfolio';
-import { download, loadSamples, nowIso, store, ui } from './state';
+import { parseRoute } from './router';
+import { download, loadSamples, nowIso, store, ui, type Draft } from './state';
 
 type Handler = (el: HTMLElement) => void | Promise<void>;
 const val = (el: HTMLElement): string => (el as HTMLInputElement).value;
@@ -17,7 +22,64 @@ const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 const options = () => ({ ...DEFAULT_OPTIONS, proxies: store.db.settings.proxies, strict: store.db.settings.strict });
 
+const MIN_FY = 1990;
+const MAX_MANUAL_YEARS = 6;
+
+/** A blank draft for typing figures by hand: the confirm screen is the entry form. */
+function manualDraft(latestFy: number, years: number, name: string, note: string): Draft {
+  const periods = Array.from({ length: years }, (_, i) => `FY${latestFy - years + 1 + i}`);
+  const table: SourceTable = { fileName: 'Manual entry', sheetName: 'typed by user', layout: 'manual', company: name, periods, rows: [], notes: note ? [note] : [] };
+  return { table, mapping: {}, meta: { ...defaultMeta(table), name }, edits: {} };
+}
+
 export const ACTIONS: Record<string, Handler> = {
+  manual() {
+    const fy = Number((document.getElementById('man-fy') as HTMLInputElement | null)?.value);
+    const n = Number((document.getElementById('man-n') as HTMLSelectElement | null)?.value);
+    if (!Number.isInteger(fy) || fy < MIN_FY || fy > new Date().getFullYear() + 1) return ui.say('Enter the latest financial year as four digits, for example 2025.');
+    ui.draft = manualDraft(fy, Math.min(MAX_MANUAL_YEARS, Math.max(1, n || 2)), 'New company', '');
+    ui.go({ name: 'confirm' });
+  },
+  async pdf(el) {
+    const file = (el as HTMLInputElement).files?.[0];
+    if (!file) return;
+    const name = file.name.replace(/\.pdf$/i, '');
+    try {
+      ui.say(`Reading ${file.name} in your browser…`);
+      const { readPdf } = await import('../ingest/pdf');
+      const pages = await readPdf(await file.arrayBuffer(), (done, total) => ui.say(`Reading ${file.name}: page ${done} of ${total}…`));
+      const x = extractFromPages(pages, file.name);
+      const fy = new Date().getFullYear();
+      if (x.scanned || x.table.rows.length === 0) {
+        // Nothing usable in the statements: fall back to the manual form, keeping any text that could be read.
+        const why = x.scanned ? 'This PDF is scanned or has no readable text, and CLADES does not use OCR.' : 'No balance sheet, profit and loss or cash flow statement was recognised in this PDF.';
+        ui.draft = { ...manualDraft(fy, 2, name, `${why} Manual entry was opened instead.`), ...(x.scanned ? {} : { textPages: x.pages, textHits: x.textHits }) };
+        ui.say(`${why} Manual entry opened instead: type the figures from the report.`);
+      } else {
+        ui.draft = { table: x.table, mapping: autoMap(x.table), meta: { ...defaultMeta(x.table), name, basis: x.basis, unit: x.unit ?? 'crore' }, edits: {}, textPages: x.pages, textHits: x.textHits };
+        ui.say('');
+      }
+      ui.go({ name: 'confirm' });
+    } catch (e) {
+      ui.draft = manualDraft(new Date().getFullYear(), 2, name, `The PDF could not be opened (${errText(e)}). Manual entry was opened instead.`);
+      ui.go({ name: 'confirm' });
+      ui.say(`Could not read ${file.name}: ${errText(e)}. Manual entry opened instead.`);
+    }
+  },
+  async price(el) {
+    const file = (el as HTMLInputElement).files?.[0];
+    const id = el.dataset.id;
+    if (!file || !id) return;
+    const points = parsePriceCsv(await file.text());
+    if (points.length < 2) return ui.say('No usable rows found. The price CSV needs a date column and a close column (volume optional).');
+    store.setPrice(id, points);
+    ui.rerender();
+  },
+  'price-clear'(el) {
+    if (el.dataset.id) store.setPrice(el.dataset.id, null);
+    ui.rerender();
+  },
+
   async file(el) {
     const file = (el as HTMLInputElement).files?.[0];
     if (!file) return;
@@ -115,12 +177,22 @@ export const ACTIONS: Record<string, Handler> = {
   },
   /** Re-score one stored company after toggling strict mode or proxies on its dashboard. */
   rescore(el) {
-    const rec = Object.values(store.db.cases).find((r) => location.hash.includes(encodeURIComponent(r.id)));
-    const k = el.dataset.k;
-    if (!rec || (k !== 'strict' && k !== 'proxies')) return;
+    const route = parseRoute(location.hash);
+    const rec = route.name === 'case' ? store.db.cases[route.id] : undefined;
+    const k = el.dataset.k ?? '';
+    if (!rec) return;
+    const settings = { ...rec.caseFile.settings };
+    if (k === 'strict' || k === 'proxies') settings[k] = (el as HTMLInputElement).checked;
+    else if (k === 'h:reset') delete settings.honest;
+    else if (k.startsWith('h:')) {
+      // Honest-profit sliders: percentages on the page, fractions in the case file.
+      const base = rec.caseFile.honest?.params ?? RULES.honestProfit;
+      const key = k.slice(2);
+      if (!Object.hasOwn(base, key)) return;
+      settings.honest = { ...base, [key]: Number(val(el)) / 100 };
+    } else return;
     try {
-      const next = buildCaseFile(rec.company, { ...rec.caseFile.settings, [k]: (el as HTMLInputElement).checked }, rec.caseFile.generatedAt);
-      store.rescore(rec.id, next);
+      store.rescore(rec.id, buildCaseFile(rec.company, settings, rec.caseFile.generatedAt));
     } catch (e) {
       ui.say(errText(e));
     }

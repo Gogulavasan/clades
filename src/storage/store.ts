@@ -1,6 +1,7 @@
 /** Browser-only persistence (localStorage): scanned cases, quarantine status, prediction ledger, settings. */
 import type { CaseFile } from '../casefile/build';
 import type { Tier } from '../scoring/score';
+import type { PricePoint } from '../ingest/price';
 import type { Company } from '../standardise/schema';
 
 export const STATUSES = ['NEW', 'UNDER REVIEW', 'CLEARED', 'CONCERN CONFIRMED'] as const;
@@ -17,6 +18,8 @@ export interface CaseRecord {
   /** Date this company first scored Watch or Suspicious; null if never flagged. */
   flagDate: string | null;
   history: { date: string; year: string; score: number | null; tier: Tier }[];
+  /** Optional price history loaded by the user for the price/volume panel. */
+  price?: PricePoint[];
 }
 
 export interface LedgerEntry {
@@ -103,6 +106,7 @@ export class Store {
       notes: prev?.notes ?? '',
       flagDate: prev?.flagDate ?? (isFlagged(tier) ? date : null),
       history: [...(prev && Boolean(prev.caseFile.sample) === caseFile.sample ? prev.history : []), { date, year, score, tier }],
+      ...(prev?.price ? { price: prev.price } : {}),
     };
     this.db.cases[rec.id] = rec;
     // A flag on a real company is logged as a prediction, once per company-year, to be judged later.
@@ -118,6 +122,14 @@ export class Store {
     const rec = this.db.cases[id];
     if (!rec) return;
     rec.caseFile = caseFile;
+    this.save();
+  }
+
+  setPrice(id: string, price: PricePoint[] | null): void {
+    const rec = this.db.cases[id];
+    if (!rec) return;
+    if (price) rec.price = price;
+    else delete rec.price;
     this.save();
   }
 

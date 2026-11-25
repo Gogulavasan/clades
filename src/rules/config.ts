@@ -3,6 +3,7 @@ import benchmarksJson from '../../config/benchmarks.json';
 import rulesJson from '../../config/rules.json';
 import type { BeneishConfig, BeneishRatio, TataMethod } from '../models/beneish';
 import type { AltmanConfig } from '../models/others';
+import type { HonestParams } from '../scoring/honest';
 
 export type Leg = 'pressure' | 'opportunity' | 'rationalisation';
 export const LEGS: readonly Leg[] = ['pressure', 'opportunity', 'rationalisation'];
@@ -70,6 +71,7 @@ export interface RulesConfig {
     combos: ComboDef[];
     confidence: Record<string, number>;
   };
+  honestProfit: HonestParams;
   rules: RuleDef[];
 }
 

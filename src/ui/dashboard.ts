@@ -4,7 +4,7 @@ import { BENEISH_RATIOS } from '../models/beneish';
 import { RULES } from '../rules/config';
 import { fmt, type RuleResult } from '../rules/engine';
 import type { CaseRecord } from '../storage/store';
-import { beneishChart, pairedColumns, scoreBar, tag, trendLines } from './charts';
+import { beneishChart, n0, pairedColumns, priceChart, scoreBar, tag, trendLines, waterfall } from './charts';
 import { empty, html, panel, type Raw } from './dom';
 import type { CaseTab } from './router';
 import { day } from './state';
@@ -20,7 +20,7 @@ const shortSource = (r: RuleResult): string => {
 };
 
 const threshold = (r: RuleResult): string =>
-  r.id.startsWith('BEN_') ? `amber above ${r.amber}, red from ${r.red}` : `amber ${r.direction === 'higher' ? '≥' : '≤'} ${fmt(r.amber, r.format)}, red ${r.direction === 'higher' ? '≥' : '≤'} ${fmt(r.red, r.format)}`;
+  r.battery.startsWith('F ') ? 'any matching sentence' : r.id.startsWith('BEN_') ? `amber above ${r.amber}, red from ${r.red}` : `amber ${r.direction === 'higher' ? '≥' : '≤'} ${fmt(r.amber, r.format)}, red ${r.direction === 'higher' ? '≥' : '≤'} ${fmt(r.red, r.format)}`;
 
 const benchNote = (r: RuleResult): Raw | null =>
   r.benchmark ? html` <span class="muted">vs sector ${r.benchmark.value === null ? 'n/a' : (r.benchmark.value * (r.benchmark.key === 'cfoToPat' ? 1 : 100)).toFixed(r.benchmark.key === 'cfoToPat' ? 2 : 0)}${r.benchmark.key === 'cfoToPat' ? 'x' : '%'}${r.benchmark.placeholder ? ' (placeholder benchmark)' : ''}</span>` : null;
@@ -33,6 +33,7 @@ function ruleCard(r: RuleResult): Raw {
       <p>${r.plain}${benchNote(r)}</p>
       <p><span class="k">Innocent explanation:</span> ${r.innocent}</p>
       ${r.nextStep ? html`<p><span class="k">Worth checking:</span> ${r.nextStep}</p>` : null}
+      ${r.quotes?.length ? html`<ul class="plain quotes">${r.quotes.map((q) => html`<li>“${q.sentence}” <span class="lv-amber">page ${q.page}</span></li>`)}</ul>` : null}
       <p class="muted">Formula: <code>${r.formula}</code> · ${threshold(r)} · weight ${r.weight} · ${r.leg} · ${r.battery}</p>
       ${r.missing.length ? html`<p class="muted">Not computed because: ${r.missing.join('; ')}. Nothing was estimated.</p>` : null}
       ${r.level === 'na' ? html`<p class="muted">Not applicable to this company-year (the rule's condition is not met).</p>` : null}
@@ -61,7 +62,8 @@ function verdictPanel(cf: CaseFile): Raw {
     ${t ? html`${scoreBar('PRESSURE', t.pressure.score, t.pressure.level)}${scoreBar('OPPORTUNITY', t.opportunity.score, t.opportunity.level)}${scoreBar('RATIONALISE', t.rationalisation.score, t.rationalisation.level)}` : null}
     ${t?.opportunity.score === null ? html`<p class="muted">Opportunity N/A: governance facts are not in this input.</p>` : null}
     <p class="k sub">REPORTED → STRESS-TESTED PROFIT</p>
-    <p class="muted">Reported PAT ${cf.series.netIncome[cf.series.netIncome.length - 1]?.toFixed(0) ?? 'n/a'} cr. Stress-tested figure arrives with the honest-profit estimator (build 7).</p>
+    <p class="big">₹${n0(cf.honest?.reported ?? null)} cr <span class="muted">→</span> <span class="lv-info">₹${n0(cf.honest?.stressed ?? null)} cr</span></p>
+    <p class="muted">A stress test under adjustable assumptions (panel 5), not an estimate of true profit.</p>
     <p class="summary">${v.summary}</p>`;
 }
 
@@ -95,7 +97,11 @@ function evidencePanel(cf: CaseFile): Raw {
 function indiaPanel(cf: CaseFile): Raw {
   const pack = cf.rules.filter((r) => r.battery === 'India pack');
   return html`<p class="k sub">WORDS VS NUMBERS</p>
-    <p class="muted">Needs the annual report text (management claims quoted against the figures). Arrives with PDF extraction (builds 6-7).</p>
+    ${cf.textPages === null
+      ? html`<p class="muted">Needs the annual report text. Load the PDF route to quote management's claims against the figures.</p>`
+      : cf.wordsVsNumbers.length
+        ? cf.wordsVsNumbers.map((w) => html`<p class="muted">MGMT SAYS <span class="lv-amber">(page ${w.page})</span></p><p class="quote">“${w.claim}”</p><p class="muted">NUMBERS SAY</p><p class="lv-red">${w.rule}: ${w.figure} ${w.level === 'red' ? 'FLAG' : 'WATCH'}</p>`)
+        : html`<p class="muted">${cf.textPages} page(s) scanned. No upbeat management claim (cash, balance sheet, margins, collections) was contradicted by a flagged figure.</p>`}
     <p class="k sub">INDIA PACK</p>
     <table class="tbl"><tbody>
       ${pack.map((r) => html`<tr><td class="k">${r.title}</td><td>${r.display}</td><td>${tag(r.level)}</td></tr>`)}
@@ -164,11 +170,10 @@ export function caseView(rec: CaseRecord, tab: CaseTab): Raw {
   const inBattery = (...prefixes: string[]): RuleResult[] => cf.rules.filter((r) => prefixes.some((p) => r.battery.startsWith(p)));
   const p = {
     verdict: panel(1, 'Verdict', verdictPanel(cf), 4),
-    trend: panel(2, 'Revenue & PAT trend (no price CSV loaded)', html`${trendLines(s.years, [['Revenue', s.revenue, '#2ee66b'], ['PAT', s.netIncome, '#ffb000']])}
-      <p class="muted">Each line is scaled to its own range. Price and volume with a "flag raised" marker need an optional price CSV, which is not built yet. First flagged: ${day(rec.flagDate)}.</p>`, 8),
+    trend: trendPanel(rec),
     beneish: panel(3, 'Beneish · 8 ratios vs non-manipulator mean (1.00)', html`${beneishChart(cf)}${beneishLine(cf)}`, 5),
     cash: panel(4, 'Profit vs cash · 5 years (₹ cr)', patCash, 4),
-    bridge: panel(5, 'Honest-profit bridge', empty('NOT BUILT YET', 'The stress-tested profit waterfall with adjustable assumptions arrives in build 7.'), 3),
+    bridge: panel(5, 'Honest-profit bridge', bridgePanel(cf, false), 3),
     evidence: panel(6, 'Evidence ledger · top flags', evidencePanel(cf), 8),
     india: panel(7, 'Words vs numbers · India pack', indiaPanel(cf), 4),
     next: panel(8, 'Next steps', cf.nextSteps.length ? html`<ol class="steps">${cf.nextSteps.map((n) => html`<li>${n}</li>`)}</ol>` : html`<p class="muted">Nothing specific to chase. Re-scan when the next annual report is out.</p>`, 6),
@@ -180,7 +185,8 @@ export function caseView(rec: CaseRecord, tab: CaseTab): Raw {
     earnings: html`${panel(4, 'Profit vs cash · 5 years (₹ cr)', patCash, 5)}
       ${panel('A', 'Earnings quality', ruleList(inBattery('A '), 'No earnings-quality rules.'), 7)}
       ${panel('B', 'Revenue quality', ruleList(inBattery('B '), 'No revenue rules.'), 6)}
-      ${panel('E', 'Too good to be true · cost and asset games', ruleList(inBattery('E ', 'C '), 'No rules.'), 6)}`,
+      ${panel('E', 'Too good to be true · cost and asset games', ruleList(inBattery('E ', 'C '), 'No rules.'), 6)}
+      ${panel(5, 'Honest-profit bridge · adjust the assumptions', bridgePanel(cf, true))}`,
     beneish: html`${settingsBar(cf)}<div class="grid">${panel(3, 'Beneish · 8 ratios vs non-manipulator mean (1.00)', html`${beneishChart(cf)}${beneishLine(cf)}`, 5)}
       ${panel('M', 'M-score working', beneishTable(cf), 7)}
       ${panel('R', 'Each ratio: formula, inputs and sources', ruleList(inBattery('Beneish'), 'Beneish needs two consecutive years.'))}</div>`,
@@ -192,8 +198,48 @@ export function caseView(rec: CaseRecord, tab: CaseTab): Raw {
         ${cf.piotroski ? html`<p class="muted">Piotroski tests: ${cf.piotroski.tests.map((t) => `${t.name} ${t.pass === null ? 'n/a' : t.pass ? 'PASS' : 'FAIL'}`).join(' · ')}</p>` : null}
         ${ruleList(inBattery('Distress', 'Quality'), '')}`, 6)}`,
     governance: html`${panel('O', 'Opportunity leg · governance facts', html`${ruleList(cf.rules.filter((r) => r.leg === 'opportunity'), 'No opportunity rules.')}
-        <p class="muted">Auditor opinion, auditor change, key audit matters, related-party text, going-concern language and delayed filings are read from the annual report PDF, which arrives in builds 6-7. Every text flag will show the quoted sentence and its page number.</p>`, 7)}
+        <p class="muted">The governance and text checks read the annual report PDF with a fixed keyword lexicon (config/lexicon.json). Open any check to see the quoted sentence and its page. "No match" means no listed phrase was found in the pages read; it is not a clean bill of health. Not yet covered: auditor tenure and size, receivables ageing from the notes.</p>`, 7)}
       ${p.india}${p.next}`,
   };
   return html`${head}${tab === 'beneish' ? body.beneish : html`<div class="grid">${body[tab]}</div>`}`;
+}
+
+const PCT = 100;
+const MAX_TAX_PCT = 40;
+
+/** Panel 5: waterfall from reported to stress-tested profit; with sliders when `sliders` is true. */
+function bridgePanel(cf: CaseFile, sliders: boolean): Raw {
+  const h = cf.honest;
+  if (!h || h.reported === null) return empty('NO DATA', 'Needs the net profit for the latest year.');
+  const head = html`${waterfall(h)}
+    <p>Reported ₹${n0(h.reported)} cr → stress-tested <strong class="lv-info">₹${n0(h.stressed)} cr</strong></p>`;
+  if (!sliders) return html`${head}<p class="muted">Each step and its assumption can be adjusted on F2 EARNINGS.</p>`;
+  return html`${head}
+    <div class="sliders">
+      ${h.items.map((i) => html`<label for="h-${i.id}">
+        <span><span class="k">${i.label}</span>: <strong>${Math.round(i.pct * PCT)}%</strong> of ₹${i.base === null ? 'n/a' : n0(i.base)} cr → <span class="lv-red">−₹${n0(i.afterTax)} cr</span> after tax</span>
+        <input type="range" min="0" max="100" step="5" value="${Math.round(i.pct * PCT)}" id="h-${i.id}" data-act="rescore" data-k="h:${i.id}" />
+        <span class="muted">${i.explain}${i.base === null ? ' NOT COMPUTED: an input is missing, so no adjustment is made.' : ''}</span>
+      </label>`)}
+      <label for="h-taxRate">
+        <span><span class="k">Tax shield</span>: <strong>${Math.round(h.params.taxRate * PCT)}%</strong></span>
+        <input type="range" min="0" max="${MAX_TAX_PCT}" step="1" value="${Math.round(h.params.taxRate * PCT)}" id="h-taxRate" data-act="rescore" data-k="h:taxRate" />
+        <span class="muted">Each adjustment lowers taxable profit, so its after-tax effect is smaller.</span>
+      </label>
+    </div>
+    <p class="muted">The defaults are deliberately harsh round numbers, not estimates. The bridge answers "how much of this profit depends on soft items?", not "what is the true profit?".
+      <button type="button" data-act="rescore" data-k="h:reset">RESET TO DEFAULTS</button></p>`;
+}
+
+/** Panel 2: price and volume when the user has loaded a price CSV; otherwise the revenue and PAT trend, saying so. */
+function trendPanel(rec: CaseRecord): Raw {
+  const s = rec.caseFile.series;
+  if (rec.price?.length) {
+    return panel(2, 'Price · volume vs flag date', html`${priceChart(rec.price, rec.flagDate)}
+      <p class="muted">${rec.price.length} price points from your CSV. The marker is the date this company first scored Watch or Suspicious in this browser (${day(rec.flagDate)}), not the date of any event.
+        <button type="button" data-act="price-clear" data-id="${rec.id}">REMOVE PRICE DATA</button></p>`, 8);
+  }
+  return panel(2, 'Revenue & PAT trend (no price CSV loaded)', html`${trendLines(s.years, [['Revenue', s.revenue, '#2ee66b'], ['PAT', s.netIncome, '#ffb000']])}
+    <p class="muted">Each line is scaled to its own range. For price and volume with a "flag raised" marker, load a price CSV with columns date, close, volume:
+      <label class="btn">LOAD PRICE CSV<input type="file" class="sr" accept=".csv,text/csv" data-act="price" data-id="${rec.id}" /></label></p>`, 8);
 }

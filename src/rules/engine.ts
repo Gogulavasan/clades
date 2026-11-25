@@ -1,6 +1,8 @@
 /** Evaluates every enabled rule in the JSON library against one company-year. */
+import lexicon from '../../config/lexicon.json';
 import { BENEISH_RATIOS, type BeneishRatio, type BeneishResult, type N, type TataMethod } from '../models/beneish';
 import type { Get } from '../models/others';
+import type { HonestParams } from '../scoring/honest';
 import { fieldLabel, isFieldId, type Company, type Confidence } from '../standardise/schema';
 import type { Benchmarks, Direction, Format, Leg, RulesConfig } from './config';
 import { evaluate, type Env } from './formula';
@@ -13,6 +15,8 @@ export interface EngineOptions {
   /** Beneish strict mode: every traffic-lighted ratio must be green. */
   strict: boolean;
   tata: TataMethod;
+  /** Honest-profit assumptions changed by the user; absent = config defaults. */
+  honest?: HonestParams;
 }
 
 export interface RuleInput {
@@ -48,6 +52,8 @@ export interface RuleResult {
   nextStep: string;
   missing: string[];
   usesProxy: boolean;
+  /** Text rules: the sentences that matched, each with its page. */
+  quotes?: { sentence: string; page: number }[];
 }
 
 export function fmt(v: N, f: Format): string {
@@ -162,4 +168,24 @@ export function evaluateRules(
     }
   }
   return out;
+}
+
+/**
+ * Battery F (governance and text). One rule per lexicon entry. Without report text every rule is NO DATA;
+ * with text, a rule flags when at least one sentence matched and carries those sentences as quotes.
+ */
+export function textRules(company: Company, amberFraction: number): RuleResult[] {
+  const read = company.textPages !== undefined;
+  return lexicon.flags.map((f) => {
+    const hits = (company.textHits ?? []).filter((h) => h.kind === 'flag' && h.id === f.id);
+    const level: Level = !read ? 'missing' : f.weight === 0 ? 'info' : hits.length === 0 ? 'green' : f.level === 'red' ? 'red' : 'amber';
+    return {
+      id: f.id, battery: 'F Governance & text', title: f.title, leg: 'opportunity', severity: f.level === 'red' ? 'high' : 'medium', level,
+      value: read ? hits.length : null, display: !read ? 'n/a' : hits.length ? `${hits.length} quote(s)` : 'no match',
+      direction: 'higher', amber: 1, red: 1, format: 'int', weight: f.weight, points: pointsFor(level, f.weight, amberFraction),
+      formula: `report text matches /${f.pattern}/i`, inputs: [], benchmark: null, plain: f.plain, innocent: f.innocent, nextStep: f.nextStep,
+      missing: read ? [] : ['needs the annual report text (PDF route)'], usesProxy: false,
+      quotes: hits.map((h) => ({ sentence: h.sentence, page: h.page })),
+    };
+  });
 }

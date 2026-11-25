@@ -3,7 +3,9 @@ import { checkIntegrity, type IntegrityReport } from '../confirm/integrity';
 import { beneish, type BeneishResult, type BeneishYear, type N } from '../models/beneish';
 import { altmanZ, benford, piotroski, sloan, type Get, type PiotroskiResult } from '../models/others';
 import { BENCHMARKS, RULES, type Benchmarks, type Leg, type RulesConfig } from '../rules/config';
-import { evaluateRules, makeGet, type EngineOptions, type RuleResult } from '../rules/engine';
+import lexicon from '../../config/lexicon.json';
+import { evaluateRules, makeGet, textRules, type EngineOptions, type RuleResult } from '../rules/engine';
+import { honestProfit, type HonestResult } from '../scoring/honest';
 import { scoreRules, TIER_LABEL, type LegScore, type Tier } from '../scoring/score';
 import { FIELD_IDS, STATEMENT_NAMES, fieldStatement, type Company, type Statement } from '../standardise/schema';
 import { FINANCIAL_SECTOR } from '../standardise/standardise';
@@ -46,6 +48,11 @@ export interface CaseFile {
   beneish: BeneishResult | null;
   piotroski: PiotroskiResult | null;
   benford: { n: number; chi2: N } | null;
+  honest: HonestResult | null;
+  /** Upbeat management statements quoted against a flagged figure that contradicts them. */
+  wordsVsNumbers: { claim: string; page: number; topic: string; rule: string; figure: string; level: string }[];
+  /** Pages of annual-report text scanned; null when no text was available (spreadsheet or manual route). */
+  textPages: number | null;
   rules: RuleResult[];
   series: { years: string[]; revenue: N[]; netIncome: N[]; cfo: N[] };
   figures: Company['years'];
@@ -96,7 +103,7 @@ function emptyCase(company: Company, opts: EngineOptions, now: string, cfg: Rule
       confidence: { level: 'LOW', score: 0, reasons: [reason] }, triangle: null, combos: [], models: [], modelsFlagging: 0, modelsComputable: 0,
       summary: `${company.name}: not assessable with these rules. ${reason}`,
     },
-    beneish: null, piotroski: null, benford: null, rules: [],
+    beneish: null, piotroski: null, benford: null, honest: null, wordsVsNumbers: [], textPages: company.textPages ?? null, rules: [],
     series: { years, revenue: company.years.map((y) => y.figures.revenue?.value ?? null), netIncome: company.years.map((y) => y.figures.netIncome?.value ?? null), cfo: company.years.map((y) => y.figures.cfo?.value ?? null) },
     figures: company.years,
     dataQuality: { integrity, statements: [], proxies: [], notes: [] },
@@ -125,6 +132,12 @@ export function buildCaseFile(company: Company, opts: EngineOptions, now: string
   const bf = benford(reported, cfg.models.benford.minCount);
 
   const rules = evaluateRules(company, { MSCORE: ben?.m ?? null, SLOAN: sl, ALTMAN_Z: alt.z, PIOTROSKI_F: pio?.f ?? null, BENFORD_CHI2: bf.chi2 }, ben, cfg, bench, opts);
+  rules.push(...textRules(company, cfg.scoring.amberFraction));
+  const wordsVsNumbers = (company.textHits ?? []).filter((h) => h.kind === 'claim').flatMap((h) => {
+    const claim = lexicon.claims.find((c) => c.id === h.id);
+    const rule = rules.find((r) => r.id === claim?.contradictedBy);
+    return claim && rule && flagged(rule) ? [{ claim: h.sentence, page: h.page, topic: claim.label, rule: rule.title, figure: rule.display, level: rule.level }] : [];
+  });
 
   const m = cfg.models;
   const models: ModelResult[] = [
@@ -184,7 +197,7 @@ export function buildCaseFile(company: Company, opts: EngineOptions, now: string
 
   const nextSteps = [...new Set(top.map((r) => r.nextStep).filter(Boolean))].slice(0, MAX_NEXT_STEPS);
   if (proxiesInUse) nextSteps.push('Replace PROXY figures with the exact lines from the annual report (current assets, current liabilities, long-term debt) and re-run.');
-  if (sc.triangle.opportunity.score === null) nextSteps.push('Add governance facts on the confirm screen (promoter pledge %, related-party loans, contingent liabilities) so the Opportunity leg can be scored.');
+  if (sc.triangle.opportunity.score === null) nextSteps.push('Load the annual report PDF (its text is scanned for auditor and governance language) or add governance facts on the confirm screen, so the Opportunity leg can be scored.');
 
   const notes = [
     'Restatements cannot be detected from this source: each year is as the data provider currently reports it, which may already include restated comparatives (a look-ahead risk).',
@@ -203,7 +216,7 @@ export function buildCaseFile(company: Company, opts: EngineOptions, now: string
       tier: sc.tier, label: TIER_LABEL[sc.tier], score: sc.score, baseScore: sc.baseScore, unconfirmed: sc.tier === 'suspicious' && level === 'LOW',
       confidence: { level, score: conf, reasons }, triangle: sc.triangle, combos: sc.combos, models, modelsFlagging, modelsComputable, summary,
     },
-    beneish: ben, piotroski: pio, benford: { n: bf.n, chi2: bf.chi2 }, rules,
+    beneish: ben, piotroski: pio, benford: { n: bf.n, chi2: bf.chi2 }, honest: honestProfit(g, opts.honest ?? cfg.honestProfit), wordsVsNumbers, textPages: company.textPages ?? null, rules,
     series: { years, revenue: years.map((_, i) => makeGet(company, opts, i)('revenue')), netIncome: years.map((_, i) => makeGet(company, opts, i)('netIncome')), cfo: years.map((_, i) => makeGet(company, opts, i)('cfo')) },
     figures: company.years,
     dataQuality: { integrity, statements, proxies, notes },

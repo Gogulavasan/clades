@@ -5,7 +5,7 @@ import { html } from './dom';
 import { CASE_TABS, NO_CASE, formatRoute, parseRoute, type Route } from './router';
 import { byImportance, flagged } from '../casefile/build';
 import { ACTIONS } from './actions';
-import { seedIfEmpty, store, ui } from './state';
+import { migrate, seedIfEmpty, store, ui } from './state';
 import { renderRoute } from './views';
 
 const TAPE_ITEMS = 8;
@@ -143,6 +143,7 @@ export function mountShell(root: HTMLElement): void {
   ui.rerender = render;
   ui.go = go;
   ui.say = say;
+  migrate();
   seedIfEmpty();
 
   for (const b of buttons) b.addEventListener('click', () => press(Number(b.dataset.fkey)));

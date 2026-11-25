@@ -17,17 +17,22 @@ Live: https://gogulavasan.github.io/clades/
 | 3 | Beneish M-score with hand-calculated tests | Done |
 | 4 | Other rule batteries, Fraud Triangle scoring, case file | Done |
 | 5 | Company dashboard and portfolio monitor | Done |
-| 6 | Manual entry and PDF extraction | Next |
-| 7 | Honest-profit estimator and text/governance rules | Planned |
-| 8 | Offline sector benchmarks and back-test | Planned |
+| 6 | Manual entry and PDF extraction | Done |
+| 7 | Honest-profit estimator, text/governance rules, price chart | Done |
+| 8 | Offline benchmark builder and back-test tooling | Done (awaiting real data) |
 
-Not built yet, and labelled as such in the app: manual entry, PDF reading, governance text flags, the honest-profit
-waterfall, the price/volume chart, real sector benchmarks, the back-test, and the Families panel.
+Still open, and labelled as such in the app: the back-test has **not been run** (no hand-entered case data yet), sector
+benchmarks are placeholders, the PDF route has only been tested on a synthetic report, and the Families panel,
+auditor tenure/size and receivables-ageing checks are not built.
+
+![Company report](docs/screenshots/company-report.jpg)
+
+![Portfolio monitor](docs/screenshots/portfolio.jpg)
 
 ## How it works
 
 ```
-upload -> parse sheet -> map columns -> CONFIRM (you review every figure) -> integrity gate
+Excel/CSV | PDF | manual -> extract -> map columns -> CONFIRM (you review every figure) -> integrity gate
        -> standardised schema (INR crore) -> models + rule library -> Fraud Triangle score -> case file -> screens
 ```
 
@@ -45,6 +50,13 @@ upload -> parse sheet -> map columns -> CONFIRM (you review every figure) -> int
 2. **Any spreadsheet or CSV** with line items down the first column and years across the top. Labels are matched by
    the alias table in `config/mapping.json`; anything unmatched is left unmapped and can be mapped by hand on the
    confirm screen.
+3. **PDF annual report** (pdf.js, in the browser). Rule-based: statement pages are found by their headings, a page
+   must be a table to qualify, and each line's last two numbers are read as current and prior year. The balance-sheet
+   section a line sits in decides, for example, whether "Borrowings" is long-term or short-term. The whole text is
+   also scanned with the regex lexicon in `config/lexicon.json`; every match is shown as a quoted sentence with its
+   page. Scanned PDFs have no text layer: the app says so and opens manual entry. No OCR is used.
+4. **Manual entry.** Pick the latest year and how many years; the confirm screen becomes the form.
+5. **Optional price CSV** per company (`date, close, volume`) for the price/volume panel.
 
 Screener exports do not split current from non-current items and do not report long-term debt separately. Three
 stand-ins are used and tagged **PROXY** everywhere (Other Assets for current assets, Other Liabilities for current
@@ -57,16 +69,37 @@ case AQI and LVGI are missing and no M-score is produced.
   + 0.115 DEPI - 0.172 SGAI + 4.679 TATA - 0.327 LVGI`. Two-key verdict: Clean needs M below -1.78 **and** at most
   two red ratios; strict mode needs every traffic-lighted ratio green. SGAI is shown as information only because its
   reference means barely differ and its weight is negative.
-- **Other models:** Sloan accruals, Altman Z'' (emerging markets), Piotroski F. Dechow F-score is deliberately left
-  out until its coefficients are verified against the source paper.
+- **Other models:** Sloan accruals, Altman Z'' (emerging markets), Piotroski F. The Dechow F-score is deliberately
+  left out: its coefficients have not been verified against the source paper, and guessing them is not acceptable.
 - **Rule library:** 28 rules across earnings quality, revenue quality, cost and asset games, balance-sheet logic,
   too-good-to-be-true, cross-statement consistency and an India pack. Each rule in `config/rules.json` carries its
   formula, thresholds, weight, plain-English meaning, innocent explanation and next step. The formula language
   (`src/rules/formula.ts`) means rules can be added, tuned or disabled without touching code.
 - **Fraud Triangle:** every rule feeds Pressure, Opportunity or Rationalisation (0-100 each). Combination rules raise
   the score when several weak signals appear together. Tiers: Clean below 30, Watch 30-69, Suspicious 70+.
+- **Honest-profit bridge:** reported profit less four adjustable stress adjustments (receivables build-up, growth
+  in soft assets, depreciation back to last year's rate, other income), each shown after tax in a waterfall. The
+  defaults are harsh round numbers; it answers "how much of this profit rests on soft items?", not "what is true profit?".
+- **Governance and text (PDF only):** nine lexicon rules (modified audit opinion, going-concern doubt, emphasis of
+  matter, auditor resignation, defaults, related-party loans, pledging, delays, key audit matters) feed the Opportunity
+  leg. Negated boilerplate such as "has not defaulted" is skipped. "No match" means the phrase was not found, not
+  that the matter is absent.
 - **Confidence:** lowered for few years of data, proxies, low-confidence figures, integrity warnings, low rule
   coverage and placeholder benchmarks. A Suspicious score on low confidence is shown as **unconfirmed**.
+
+## Offline research (Python, standard library only)
+
+| File | Purpose |
+| --- | --- |
+| `scripts/build_benchmarks.py` | Sector medians from a CSV you supply into `config/benchmarks.json`, with date, source and coverage. |
+| `notebooks/cases_template.csv` | The known Indian cases with empty figure columns. Copy to `cases.csv` and fill from original annual reports. |
+| `scripts/backtest.py` | M-score per company-year, hit rate, false-positive rate on the control group, precision, ROC AUC, years flagged early, base-rate table. Threshold tuned on an earlier period, tested on a later one. Writes `config/validation.json`. |
+| `notebooks/backtest.ipynb` | Walks through the back-test and ends with a leakage checklist. |
+| `scripts/make_sample_pdf.py` | Rebuilds the synthetic sample PDF. |
+
+The back-test never fills a blank and counts a case as positive only in the years strictly before its event, using
+accounts as first filed. `python scripts/backtest.py --selftest` checks the Python formulas against the same
+hand-calculated example as the TypeScript tests. Never commit raw vendor data: keep it in `data/raw/` (git-ignored).
 
 ## Run it
 
@@ -113,8 +146,18 @@ source must be "GitHub Actions".
 - **Survivorship and look-ahead bias.** Known blow-ups are chosen with hindsight, and data providers show restated
   figures, which can leak the answer into a back-test.
 - **Ind AS transition.** Accounts before and after the move to Ind AS (FY2017-FY2018) are not directly comparable.
-- **Extraction errors.** Figures read from a spreadsheet can be wrong; the confirm step exists so a person checks
-  them before anything is scored.
+- **Extraction errors.** Figures read from a spreadsheet or PDF can be wrong; the confirm step exists so a person
+  checks them before anything is scored. PDF extraction has been tested on a synthetic report only.
+- **Text rules are keyword matches.** They miss paraphrases and can quote a sentence out of context. A rule that
+  finds nothing has not established that nothing is there.
+- **The honest-profit bridge is a stress test.** Its "soft assets" bucket also contains genuine investments and
+  goodwill, and its default percentages are arbitrary.
+- **Not verified on real filings.** No real Screener export or real annual report has been run through this build.
+
+## More
+
+- `docs/INTERVIEW.md`: 30-second pitch, walkthrough and ten tough questions.
+- Privacy page in the app: data lives only in your browser.
 
 ## Licence
 

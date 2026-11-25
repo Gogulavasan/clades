@@ -1,6 +1,6 @@
 {
   "$comment": "CLADES rule library. Every threshold, weight and explanation lives here. Rules can be added (formula language: see src/rules/formula.ts), tuned or disabled ('enabled': false) without code changes. Weights and amber/red cut-offs are the author's judgment, NOT calibrated on Indian data; the back-test (build 8) exists to challenge them.",
-  "version": "0.5.0",
+  "version": "0.8.0",
   "beneish": {
     "$comment": "Beneish (1999), 'The Detection of Earnings Manipulation', Financial Analysts Journal 55(5). Reference means below: verify against the paper; US sample; recalibrate on Indian data.",
     "intercept": -4.84,
@@ -101,6 +101,14 @@
       "singleYear": 50, "twoYears": 20, "mScoreMissing": 20, "proxiesUsed": 20, "lowConfidenceFigures": 15, "integrityWarnings": 10,
       "lowCoverage": 20, "lowCoverageBelow": 0.6, "opportunityNotAssessed": 10, "placeholderBenchmark": 5
     }
+  },
+  "honestProfit": {
+    "$comment": "Default stress-test assumptions. Every one is adjustable with a slider on the dashboard. They are deliberately harsh round numbers, not estimates of what is true.",
+    "receivablesProvisionPct": 0.5,
+    "capitalisedReversalPct": 0.5,
+    "depreciationNormalisationPct": 1,
+    "otherIncomeHaircutPct": 0.25,
+    "taxRate": 0.25
   },
   "rules": [
     {

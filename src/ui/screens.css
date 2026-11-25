@@ -88,3 +88,16 @@ input.c-edit { border-left-color: #fff; }
   .banner button, .statusbar { display: none; }
   .muted, .tbl td, .rule-b, .summary { color: #222; }
 }
+
+/* Builds 6-8 */
+.sliders { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px 18px; margin: 8px 0; }
+.sliders label { display: grid; gap: 3px; }
+input[type='range'] { width: 100%; accent-color: var(--amber); }
+.quote { color: #fff; margin: 2px 0 6px; }
+.quotes li { color: #fff; }
+.inline { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.inline input[type='text'] { width: 7ch; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; margin: 0 0 8px; }
+.metrics div { border: 1px solid var(--line); padding: 6px 8px; }
+.metrics dt { color: var(--muted); text-transform: uppercase; font-size: 11px; }
+.metrics dd { margin: 0; font-size: 18px; color: #fff; }

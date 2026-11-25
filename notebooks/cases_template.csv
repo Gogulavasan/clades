@@ -1,0 +1,15 @@
+company,group,event_fy,fy,basis,source_document,source_pages,sales,cogs,receivables,current_assets,ppe,total_assets,depreciation,sga,current_liabilities,long_term_debt,net_income,cfo
+# HOW TO FILL: one row per company per financial year; at least 2 consecutive years per company (3+ before the event is better).
+# Type every figure from the ORIGINAL annual report as first filed (not restated; not from a data vendor). Same unit within a company.
+# group = case or control. event_fy = financial year the problem became public (cases only; leave blank for controls).
+# Leave a cell blank if the report does not give the figure. Never estimate. Rows whose company starts with # are ignored.
+# Add control companies (same sectors and sizes; choose them BEFORE looking at any score) below the cases.
+Satyam Computer Services,case,,,,,,,,,,,,,,,,,
+Manpasand Beverages,case,,,,,,,,,,,,,,,,,
+Gitanjali Gems,case,,,,,,,,,,,,,,,,,
+Kingfisher Airlines,case,,,,,,,,,,,,,,,,,
+Jet Airways,case,,,,,,,,,,,,,,,,,
+Cox & Kings,case,,,,,,,,,,,,,,,,,
+Educomp Solutions,case,,,,,,,,,,,,,,,,,
+Videocon Industries,case,,,,,,,,,,,,,,,,,
+PC Jeweller,case,,,,,,,,,,,,,,,,,

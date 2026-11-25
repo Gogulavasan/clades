@@ -123,7 +123,7 @@ a {
   border-bottom: 1px solid var(--line);
 }
 .cmd-msg:not(:empty)::before {
-  content: 'ERR ';
+  content: '» ';
   font-weight: 700;
 }
 

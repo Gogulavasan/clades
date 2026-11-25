@@ -1,57 +1,285 @@
 {
   "$comment": "Column-mapping layer. 'aliases' map a source row label (regex, case-insensitive, matched on the trimmed label) to a schema field. Several rows may add into one field ('sign': -1 subtracts). 'proxies' fill a missing field from another and are always labelled PROXY with low confidence.",
   "aliases": [
-    { "pattern": "^(sales|net sales|revenue|revenue from operations|total revenue from operations)$", "field": "revenue" },
-    { "pattern": "^(raw material cost|cost of materials consumed|cost of goods sold|cogs|purchases of stock-in-trade)$", "field": "cogs" },
-    { "pattern": "^change in inventory$", "field": "cogs", "sign": -1 },
-    { "pattern": "^(power and fuel|other mfr\\.? exp|other manufacturing expenses)$", "field": "cogs" },
-    { "pattern": "^(employee cost|employee benefits? expenses?)$", "field": "employeeCost" },
-    { "pattern": "^(selling and admin|selling, general (and|&) admin(istrative)?( expenses)?|sg&a|sga)$", "field": "sga" },
-    { "pattern": "^other expenses$", "field": "otherExpenses" },
-    { "pattern": "^other income$", "field": "otherIncome" },
-    { "pattern": "^(depreciation|depreciation (and|&) amortisation( expense)?)$", "field": "depreciation" },
-    { "pattern": "^(interest|finance costs?|interest expense)$", "field": "interest" },
-    { "pattern": "^(profit before tax|pbt)$", "field": "pbt" },
-    { "pattern": "^(tax|tax expense|total tax expense)$", "field": "tax" },
-    { "pattern": "^(net profit|profit after tax|pat|profit for the (year|period))$", "field": "netIncome" },
-    { "pattern": "^(dividend amount|dividends?( paid)?)$", "field": "dividends" },
-    { "pattern": "^(equity share capital|share capital)$", "field": "shareCapital" },
-    { "pattern": "^(reserves|reserves (and|&) surplus|other equity)$", "field": "reserves" },
-    { "pattern": "^(total equity|net worth|shareholders'? funds)$", "field": "equity" },
-    { "pattern": "^(borrowings|total borrowings|total debt)$", "field": "borrowings" },
-    { "pattern": "^(long[- ]term (debt|borrowings)|non-current borrowings)$", "field": "longTermDebt" },
-    { "pattern": "^other liabilities$", "field": "otherLiabilities" },
-    { "pattern": "^(current liabilities|total current liabilities)$", "field": "currentLiabilities" },
-    { "pattern": "^(total liabilities and equity|total equity and liabilities)$", "field": "totalLiabilitiesEquity" },
-    { "pattern": "^(net block|property, plant (and|&) equipment|ppe|net fixed assets)$", "field": "ppe", "confidence": "medium" },
-    { "pattern": "^(capital work in progress|capital work-in-progress|cwip)$", "field": "cwip" },
-    { "pattern": "^(intangible assets|intangibles)$", "field": "intangibles" },
-    { "pattern": "^investments$", "field": "investments" },
-    { "pattern": "^other assets$", "field": "otherAssets" },
-    { "pattern": "^(current assets|total current assets)$", "field": "currentAssets" },
-    { "pattern": "^(receivables|trade receivables|debtors)$", "field": "receivables" },
-    { "pattern": "^(inventory|inventories)$", "field": "inventory" },
-    { "pattern": "^(cash & bank|cash and bank|cash (and|&) cash equivalents|cash)$", "field": "cash" },
-    { "pattern": "^total assets$", "field": "totalAssets" },
-    { "pattern": "^(cash from operating activity|cash flow from operating activities|cfo)$", "field": "cfo" },
-    { "pattern": "^(cash from investing activity|cash flow from investing activities|cfi)$", "field": "cfi" },
-    { "pattern": "^(cash from financing activity|cash flow from financing activities|cff)$", "field": "cff" },
-    { "pattern": "^net cash flow$", "field": "netCashFlow" },
-    { "pattern": "^(capex|capital expenditure|purchase of (fixed assets|property, plant and equipment))$", "field": "capex" },
-    { "pattern": "^(tax paid|income tax(es)? paid)$", "field": "taxPaid" },
-    { "pattern": "^interest paid$", "field": "interestPaid" },
-    { "pattern": "^promoter pledge( %| percent)?$", "field": "promoterPledgePct" },
-    { "pattern": "^(related[- ]party loans|loans to related parties)$", "field": "relatedPartyLoans" },
-    { "pattern": "^contingent liabilities$", "field": "contingentLiabilities" }
+    {
+      "pattern": "^tax paid$",
+      "field": "taxPaid"
+    },
+    {
+      "pattern": "^interest paid$",
+      "field": "interestPaid"
+    },
+    {
+      "pattern": "^non-current liabilities: borrowings$",
+      "field": "longTermDebt"
+    },
+    {
+      "pattern": "^current liabilities: borrowings$",
+      "field": "shortTermDebt"
+    },
+    {
+      "pattern": "^(short[- ]term (debt|borrowings)|current borrowings)$",
+      "field": "shortTermDebt"
+    },
+    {
+      "pattern": "^total non-current assets$",
+      "field": "nonCurrentAssets"
+    },
+    {
+      "pattern": "^total non-current liabilities$",
+      "field": "nonCurrentLiabilities"
+    },
+    {
+      "pattern": "^changes in inventories( of .*)?$",
+      "field": "cogs"
+    },
+    {
+      "pattern": "^net cash .*operating activities.*$",
+      "field": "cfo"
+    },
+    {
+      "pattern": "^net cash .*investing activities.*$",
+      "field": "cfi"
+    },
+    {
+      "pattern": "^net cash .*financing activities.*$",
+      "field": "cff"
+    },
+    {
+      "pattern": "^net (increase|decrease|increase ?/ ?\\(?decrease\\)?) in cash and cash equivalents$",
+      "field": "netCashFlow"
+    },
+    {
+      "pattern": "^(purchase|acquisition) of property, plant and equipment.*$",
+      "field": "capex",
+      "sign": -1
+    },
+    {
+      "pattern": "^(income )?tax(es)? paid.*$",
+      "field": "taxPaid",
+      "sign": -1
+    },
+    {
+      "pattern": "^(interest|finance costs?) paid.*$",
+      "field": "interestPaid",
+      "sign": -1
+    },
+    {
+      "pattern": "^dividends? paid.*$",
+      "field": "dividends",
+      "sign": -1
+    },
+    {
+      "pattern": "^(sales|net sales|revenue|revenue from operations|total revenue from operations)$",
+      "field": "revenue"
+    },
+    {
+      "pattern": "^(raw material cost|cost of materials consumed|cost of goods sold|cogs|purchases of stock-in-trade)$",
+      "field": "cogs"
+    },
+    {
+      "pattern": "^change in inventory$",
+      "field": "cogs",
+      "sign": -1
+    },
+    {
+      "pattern": "^(power and fuel|other mfr\\.? exp|other manufacturing expenses)$",
+      "field": "cogs"
+    },
+    {
+      "pattern": "^(employee cost|employee benefits? expenses?)$",
+      "field": "employeeCost"
+    },
+    {
+      "pattern": "^(selling and admin|selling, general (and|&) admin(istrative)?( expenses)?|sg&a|sga)$",
+      "field": "sga"
+    },
+    {
+      "pattern": "^other expenses$",
+      "field": "otherExpenses"
+    },
+    {
+      "pattern": "^other income$",
+      "field": "otherIncome"
+    },
+    {
+      "pattern": "^(depreciation|depreciation (and|&) amorti[sz]ation( expenses?)?)$",
+      "field": "depreciation"
+    },
+    {
+      "pattern": "^(interest|finance costs?|interest expense)$",
+      "field": "interest"
+    },
+    {
+      "pattern": "^(profit before tax|profit before exceptional items and tax|pbt)$",
+      "field": "pbt"
+    },
+    {
+      "pattern": "^(tax|tax expenses?|total tax expenses?)$",
+      "field": "tax"
+    },
+    {
+      "pattern": "^(net profit|profit after tax|pat|profit for the (year|period))$",
+      "field": "netIncome"
+    },
+    {
+      "pattern": "^(dividend amount|dividends?)$",
+      "field": "dividends"
+    },
+    {
+      "pattern": "^(equity share capital|share capital)$",
+      "field": "shareCapital"
+    },
+    {
+      "pattern": "^(reserves|reserves (and|&) surplus|other equity)$",
+      "field": "reserves"
+    },
+    {
+      "pattern": "^(total equity|net worth|shareholders'? funds)$",
+      "field": "equity"
+    },
+    {
+      "pattern": "^(borrowings|total borrowings|total debt)$",
+      "field": "borrowings"
+    },
+    {
+      "pattern": "^(long[- ]term (debt|borrowings)|non-current borrowings)$",
+      "field": "longTermDebt"
+    },
+    {
+      "pattern": "^other liabilities$",
+      "field": "otherLiabilities"
+    },
+    {
+      "pattern": "^(current liabilities|total current liabilities)$",
+      "field": "currentLiabilities"
+    },
+    {
+      "pattern": "^(total liabilities and equity|total equity and liabilities)$",
+      "field": "totalLiabilitiesEquity"
+    },
+    {
+      "pattern": "^(net block|property, plant (and|&) equipment|ppe|net fixed assets)$",
+      "field": "ppe",
+      "confidence": "medium"
+    },
+    {
+      "pattern": "^(capital work[- ]in[- ]progress|capital work in progress|cwip)$",
+      "field": "cwip"
+    },
+    {
+      "pattern": "^((other )?intangible assets|intangibles)$",
+      "field": "intangibles"
+    },
+    {
+      "pattern": "^investments$",
+      "field": "investments"
+    },
+    {
+      "pattern": "^other assets$",
+      "field": "otherAssets"
+    },
+    {
+      "pattern": "^(current assets|total current assets)$",
+      "field": "currentAssets"
+    },
+    {
+      "pattern": "^(receivables|trade receivables|debtors)$",
+      "field": "receivables"
+    },
+    {
+      "pattern": "^(inventory|inventories)$",
+      "field": "inventory"
+    },
+    {
+      "pattern": "^(cash & bank|cash and bank|cash (and|&) cash equivalents|cash)$",
+      "field": "cash"
+    },
+    {
+      "pattern": "^total assets$",
+      "field": "totalAssets"
+    },
+    {
+      "pattern": "^(cash from operating activity|cash flow from operating activities|cfo)$",
+      "field": "cfo"
+    },
+    {
+      "pattern": "^(cash from investing activity|cash flow from investing activities|cfi)$",
+      "field": "cfi"
+    },
+    {
+      "pattern": "^(cash from financing activity|cash flow from financing activities|cff)$",
+      "field": "cff"
+    },
+    {
+      "pattern": "^net cash flow$",
+      "field": "netCashFlow"
+    },
+    {
+      "pattern": "^(capex|capital expenditure|purchase of (fixed assets|property, plant and equipment))$",
+      "field": "capex"
+    },
+    {
+      "pattern": "^promoter pledge( %| percent)?$",
+      "field": "promoterPledgePct"
+    },
+    {
+      "pattern": "^(related[- ]party loans|loans to related parties)$",
+      "field": "relatedPartyLoans"
+    },
+    {
+      "pattern": "^contingent liabilities$",
+      "field": "contingentLiabilities"
+    }
   ],
   "proxies": [
-    { "field": "currentAssets", "from": "otherAssets", "note": "Source gives no current/non-current split. 'Other Assets' (receivables, inventory, cash, loans and other assets) is used for current assets; it can include some non-current items." },
-    { "field": "currentLiabilities", "from": "otherLiabilities", "note": "Source gives no current/non-current split. 'Other Liabilities' (payables, provisions and other liabilities) is used for current liabilities; it can include some non-current items." },
-    { "field": "longTermDebt", "from": "borrowings", "note": "Source gives total borrowings only. Total borrowings (long- and short-term) is used for long-term debt." }
+    {
+      "field": "currentAssets",
+      "from": "otherAssets",
+      "note": "Source gives no current/non-current split. 'Other Assets' (receivables, inventory, cash, loans and other assets) is used for current assets; it can include some non-current items."
+    },
+    {
+      "field": "currentLiabilities",
+      "from": "otherLiabilities",
+      "note": "Source gives no current/non-current split. 'Other Liabilities' (payables, provisions and other liabilities) is used for current liabilities; it can include some non-current items."
+    },
+    {
+      "field": "longTermDebt",
+      "from": "borrowings",
+      "note": "Source gives total borrowings only. Total borrowings (long- and short-term) is used for long-term debt."
+    },
+    {
+      "field": "sga",
+      "from": "otherExpenses",
+      "note": "Ind AS statements classify expenses by nature and report no SG&A line. 'Other expenses' is used for SG&A; it can include manufacturing overheads."
+    }
   ],
-  "units": { "crore": 1, "lakh": 0.01, "million": 0.1, "thousand": 0.0001, "rupee": 0.0000001 },
-  "integrity": { "tolerancePctOfAssets": 0.005, "toleranceAbs": 1 },
+  "units": {
+    "crore": 1,
+    "lakh": 0.01,
+    "million": 0.1,
+    "thousand": 0.0001,
+    "rupee": 1e-07
+  },
+  "integrity": {
+    "tolerancePctOfAssets": 0.005,
+    "toleranceAbs": 1
+  },
   "financialSector": "Financial (bank / NBFC / insurer)",
   "financialNamePattern": "\\b(bank|nbfc|finance|financial|finserv|fincorp|insurance|assurance|microfin|housing finance|securities|asset management|capital markets)\\b",
-  "sectors": ["Auto & components", "Capital goods", "Chemicals", "Consumer durables", "Construction & infrastructure", "FMCG", "IT services", "Metals & mining", "Pharma & healthcare", "Retail", "Textiles", "Other / unclassified", "Financial (bank / NBFC / insurer)"]
+  "sectors": [
+    "Auto & components",
+    "Capital goods",
+    "Chemicals",
+    "Consumer durables",
+    "Construction & infrastructure",
+    "FMCG",
+    "IT services",
+    "Metals & mining",
+    "Pharma & healthcare",
+    "Retail",
+    "Textiles",
+    "Other / unclassified",
+    "Financial (bank / NBFC / insurer)"
+  ]
 }

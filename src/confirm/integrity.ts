@@ -33,6 +33,11 @@ const SPECS: readonly Spec[] = [
     id: 'BS_LIAB_SUM', label: 'Liabilities side adds up', blocking: true,
     left: [['shareCapital', 1], ['reserves', 1], ['borrowings', 1], ['otherLiabilities', 1]], right: [['totalLiabilitiesEquity', 1]],
   },
+  { id: 'BS_SPLIT_ASSETS', label: 'Non-current + current assets = total assets', blocking: true, left: [['nonCurrentAssets', 1], ['currentAssets', 1]], right: [['totalAssets', 1]] },
+  {
+    id: 'BS_SPLIT_LIAB', label: 'Equity + non-current + current liabilities = total', blocking: true,
+    left: [['equity', 1], ['nonCurrentLiabilities', 1], ['currentLiabilities', 1]], right: [['totalLiabilitiesEquity', 1]],
+  },
   { id: 'BS_ASSET_SUM', label: 'Assets side adds up', blocking: true, left: [['ppe', 1], ['cwip', 1], ['investments', 1], ['otherAssets', 1]], right: [['totalAssets', 1]] },
   {
     id: 'PL_SUM', label: 'P&L adds up to profit before tax', blocking: true,
@@ -47,7 +52,8 @@ const sum = (y: YearData, terms: readonly Term[]): number | null => {
   let total = 0;
   for (const [f, sign] of terms) {
     const fig = y[f];
-    if (!fig) return null;
+    // A PROXY figure is a stand-in, so a check that needs it is not run rather than passed or failed on an estimate.
+    if (!fig || fig.proxy) return null;
     total += sign * fig.value;
   }
   return total;

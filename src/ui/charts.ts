@@ -3,6 +3,8 @@ import type { CaseFile } from '../casefile/build';
 import { BENEISH_RATIOS, type Light, type N } from '../models/beneish';
 import { RULES } from '../rules/config';
 import type { Level } from '../rules/engine';
+import type { PricePoint } from '../ingest/price';
+import type { HonestResult } from '../scoring/honest';
 import { html, type Raw } from './dom';
 
 export const LEVELS: Record<Level, readonly [cls: string, label: string]> = {
@@ -56,7 +58,7 @@ export function pairedColumns(years: string[], a: N[], b: N[], names: readonly [
 export function trendLines(years: string[], series: ReadonlyArray<readonly [name: string, values: N[], colour: string]>): Raw {
   const [W, H, top, bottom, right] = [560, 190, 18, 24, 118];
   if (years.length < 2) return noData('A trend needs at least two years.');
-  const x = (i: number): number => 10 + (i / (years.length - 1)) * (W - right - 10);
+  const x = (i: number): number => 28 + (i / (years.length - 1)) * (W - right - 28);
   return html`<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="${series.map(([n, v]) => `${n}: ${v.map(n0).join(', ')}`).join('. ')}">
     ${years.map((yr, i) => html`<text x="${f1(x(i))}" y="${H - 6}" class="cl">${yr}</text><line x1="${f1(x(i))}" x2="${f1(x(i))}" y1="${top}" y2="${H - bottom}" stroke="#151000" />`)}
     ${series.map(([name, values, colour], s) => {
@@ -120,4 +122,63 @@ export function countBars(rows: ReadonlyArray<readonly [label: string, count: nu
   return html`<div class="cbars">
     ${rows.map(([label, c]) => html`<div class="cbar"><span class="cbar-l">${label}</span><span class="cbar-t"><span class="cbar-f" style="width:${(c / max) * 100}%"></span></span><span class="cbar-v">${c}</span></div>`)}
   </div>`;
+}
+
+const RED = '#ff4d4d';
+
+/** Waterfall: reported profit, one falling step per adjustment, stress-tested profit. */
+export function waterfall(h: HonestResult): Raw {
+  if (h.reported === null || h.stressed === null) return noData('Net profit is not available.');
+  let run = h.reported;
+  const steps: { name: string; from: number; to: number; fill: string; label: string }[] = [{ name: 'REPORT', from: 0, to: h.reported, fill: AMBER, label: n0(h.reported) }];
+  for (const i of h.items) {
+    steps.push({ name: i.short, from: run, to: run - i.afterTax, fill: RED, label: i.base === null ? 'n/a' : `-${n0(i.afterTax)}` });
+    run -= i.afterTax;
+  }
+  steps.push({ name: 'STRESS', from: 0, to: h.stressed, fill: CYAN, label: n0(h.stressed) });
+  const [W, H, top, bottom] = [360, 200, 18, 22];
+  const vals = steps.flatMap((s) => [s.from, s.to]);
+  const max = Math.max(0, ...vals);
+  const min = Math.min(0, ...vals);
+  const y = (v: number): number => top + ((max - v) / (max - min || 1)) * (H - top - bottom);
+  const gw = W / steps.length;
+  return html`<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="Honest-profit bridge: ${steps.map((s) => `${s.name} ${s.label}`).join(', ')}">
+    ${steps.map((s, i) => {
+      const yTop = Math.min(y(s.from), y(s.to));
+      return html`<rect x="${f1(i * gw + gw * 0.15)}" y="${f1(yTop)}" width="${f1(gw * 0.7)}" height="${f1(Math.max(1.5, Math.abs(y(s.from) - y(s.to))))}" fill="${s.fill}" />
+        <text x="${f1(i * gw + gw / 2)}" y="${f1(Math.max(10, yTop - 4))}" class="cv">${s.label}</text>
+        <text x="${f1(i * gw + gw / 2)}" y="${H - 6}" class="cl">${s.name}</text>`;
+    })}
+    <line x1="0" x2="${W}" y1="${f1(y(0))}" y2="${f1(y(0))}" stroke="#777" />
+  </svg>`;
+}
+
+/** Closing price (line) and volume (bars) with a dashed "flag raised" marker. */
+export function priceChart(points: PricePoint[], flagDate: string | null): Raw {
+  if (points.length < 2) return noData('The price CSV needs at least two rows.');
+  const [W, H, top, priceBottom, volTop, volBottom] = [560, 215, 16, 130, 142, 190];
+  const closes = points.map((p) => p.c);
+  const [lo, hi] = [Math.min(...closes), Math.max(...closes)];
+  const vmax = Math.max(1, ...points.map((p) => p.v ?? 0));
+  const x = (i: number): number => 6 + (i / (points.length - 1)) * (W - 12);
+  const y = (c: number): number => top + ((hi - c) / (hi - lo || 1)) * (priceBottom - top);
+  const first = points[0];
+  const last = points[points.length - 1];
+  const flagDay = flagDate?.slice(0, 10) ?? null;
+  const at = flagDay === null ? -1 : points.findIndex((p) => p.d >= flagDay);
+  const outside = flagDay !== null && at === -1;
+  const fi = outside ? points.length - 1 : at;
+  const fp = points[fi];
+  return html`<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="Closing price from ${first?.d} (${first?.c}) to ${last?.d} (${last?.c}), low ${lo}, high ${hi}">
+    ${points.map((p, i) => (p.v === null ? null : html`<rect x="${f1(x(i) - 1)}" y="${f1(volBottom - (p.v / vmax) * (volBottom - volTop))}" width="2" height="${f1(Math.max(0.5, (p.v / vmax) * (volBottom - volTop)))}" fill="#1f6fa3" />`))}
+    <polyline points="${points.map((p, i) => `${f1(x(i))},${f1(y(p.c))}`).join(' ')}" fill="none" stroke="#2ee66b" stroke-width="2" />
+    ${fp
+      ? html`<line x1="${f1(x(fi))}" x2="${f1(x(fi))}" y1="${top}" y2="${volBottom}" stroke="${RED}" stroke-dasharray="5 4" />
+          <circle cx="${f1(x(fi))}" cy="${f1(y(fp.c))}" r="4" fill="${RED}" />
+          <text x="${f1(Math.min(W - 4, x(fi) - 6))}" y="${top - 4}" text-anchor="end" fill="${RED}">FLAG RAISED${outside ? ' (after last price date)' : ''}</text>`
+      : null}
+    <text x="6" y="${H - 6}" fill="#9a9a9a">${first?.d} · ${first?.c}</text>
+    <text x="${W - 6}" y="${H - 6}" text-anchor="end" fill="#9a9a9a">${last?.d} · ${last?.c}</text>
+    <text x="6" y="${top + 8}" fill="#9a9a9a">high ${hi} · low ${lo}</text>
+  </svg>`;
 }

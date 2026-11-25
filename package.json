@@ -1,6 +1,6 @@
 {
   "name": "clades",
-  "version": "0.5.0",
+  "version": "0.8.0",
   "private": true,
   "description": "CLADES - browser-only forensic accounting screen for Indian listed non-financial companies",
   "license": "MIT",
@@ -26,6 +26,7 @@
     "vitest": "3.2.7"
   },
   "dependencies": {
+    "pdfjs-dist": "4.10.38",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   }
 }

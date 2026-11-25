@@ -1,7 +1,7 @@
 /** Column mapping + unit normalisation: SourceTable -> Company in the fixed schema. Nothing is inferred. */
 import mappingConfig from '../../config/mapping.json';
 import type { SourceTable } from '../ingest/grid';
-import { isFieldId, isPctField, type Basis, type Company, type Confidence, type FieldId, type Figure, type YearData } from './schema';
+import { fieldStatement, isFieldId, isPctField, type Basis, type Company, type Confidence, type FieldId, type Figure, type YearData } from './schema';
 
 export interface MapEntry {
   field: FieldId;
@@ -44,8 +44,12 @@ export function autoMap(table: SourceTable): Mapping {
       mapping[row.index] = { field: bsTotals++ === 0 ? 'totalLiabilitiesEquity' : 'totalAssets', sign: 1, confidence: 'high' };
       continue;
     }
-    const hit = ALIASES.find((a) => a.re.test(label));
-    mapping[row.index] = hit && isFieldId(hit.field) ? { field: hit.field, sign: hit.sign, confidence: hit.confidence } : null;
+    // PDF rows carry their balance-sheet section as a prefix ("Current liabilities: Borrowings"); try the full label first.
+    const bare = label.replace(/^[^:]+:\s*/, '');
+    const hit = ALIASES.find((a) => a.re.test(label)) ?? ALIASES.find((a) => a.re.test(bare));
+    // A line belongs to its own statement: "Profit before tax" repeated at the top of a cash flow statement must not be added to the P&L figure.
+    const fits = hit && isFieldId(hit.field) && (row.section === 'any' || fieldStatement(hit.field) === row.section || fieldStatement(hit.field) === 'notes' || (hit.field === 'dividends' && row.section === 'cf'));
+    mapping[row.index] = hit && fits && isFieldId(hit.field) ? { field: hit.field, sign: hit.sign, confidence: hit.confidence } : null;
   }
   return mapping;
 }
@@ -94,11 +98,12 @@ export function standardise(table: SourceTable, mapping: Mapping, meta: Meta, ed
         continue;
       }
       const value = m.sign * v * (isPctField(m.field) ? 1 : scale);
-      const src = `${table.fileName} › ${table.sheetName} › row ${row.index + 1} "${row.label}"`;
+      const where = row.page ? `page ${row.page}` : `row ${row.index + 1}`;
+      const src = row.page ? `${table.fileName} › ${where} "${row.label}"` : `${table.fileName} › ${table.sheetName} › ${where} "${row.label}"`;
       const prev = figures[m.field];
-      const conf: Confidence = m.manual ? 'medium' : m.confidence;
+      const conf: Confidence = m.manual ? 'medium' : worse(m.confidence, row.confidence ?? 'high');
       figures[m.field] = prev
-        ? { value: prev.value + value, confidence: worse(prev.confidence, conf), source: `${prev.source}; ${m.sign < 0 ? 'minus ' : ''}row ${row.index + 1} "${row.label}"` }
+        ? { value: prev.value + value, confidence: worse(prev.confidence, conf), source: `${prev.source}; ${m.sign < 0 ? 'minus ' : ''}${where} "${row.label}"` }
         : { value, confidence: conf, source: src };
     }
     for (const f of broken) Reflect.deleteProperty(figures, f);
@@ -108,6 +113,11 @@ export function standardise(table: SourceTable, mapping: Mapping, meta: Meta, ed
     const rs = figures.reserves;
     if (!figures.equity && sc && rs) {
       figures.equity = { value: sc.value + rs.value, confidence: worse(sc.confidence, rs.confidence), source: 'Share capital + Reserves', derived: 'Share capital + Reserves' };
+    }
+    const lt = figures.longTermDebt;
+    const st = figures.shortTermDebt;
+    if (!figures.borrowings && lt && st) {
+      figures.borrowings = { value: lt.value + st.value, confidence: worse(lt.confidence, st.confidence), source: 'Long-term + short-term borrowings', derived: 'Long-term + short-term borrowings' };
     }
     // Labelled stand-ins for lines the source does not report. The engine can be told to ignore them.
     for (const px of mappingConfig.proxies) {

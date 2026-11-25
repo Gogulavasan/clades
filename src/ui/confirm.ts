@@ -5,7 +5,10 @@ import { FINANCIAL_SECTOR, SECTORS, UNIT_IDS, standardise } from '../standardise
 import { html, panel, type Raw } from './dom';
 import { store, ui, type Draft } from './state';
 
-export const draftCompany = (d: Draft): Company => standardise(d.table, d.mapping, d.meta, d.edits);
+export const draftCompany = (d: Draft): Company => ({
+  ...standardise(d.table, d.mapping, d.meta, d.edits),
+  ...(d.textPages === undefined ? {} : { textPages: d.textPages, textHits: d.textHits ?? [] }),
+});
 
 const figTag = (f: Figure | undefined): readonly [cls: string, label: string] =>
   !f ? ['c-miss', 'MISS'] : f.edited ? ['c-edit', 'EDIT'] : f.proxy ? ['c-proxy', 'PROXY'] : f.derived ? ['c-high', 'CALC'] : f.confidence === 'high' ? ['c-high', 'HIGH'] : f.confidence === 'medium' ? ['c-med', 'MED'] : ['c-low', 'LOW'];
@@ -21,7 +24,7 @@ export function confirmView(): Raw {
   const n = (s: string): number => rep.checks.filter((c) => c.status === s).length;
   const financial = d.meta.sector === FINANCIAL_SECTOR;
   const existing = store.db.cases[company.ticker];
-  const noYears = company.years.length === 0;
+  const noYears = company.years.every((y) => Object.keys(y.figures).length === 0);
   const unmapped = d.table.rows.filter((r) => !d.mapping[r.index]).length;
 
   const meta = html`<div class="form">
@@ -32,6 +35,8 @@ export function confirmView(): Raw {
       <label>File figures are in <select data-act="meta" data-k="unit" id="m-unit">${options(UNIT_IDS, d.meta.unit)}</select></label>
     </div>
     <p class="muted">Source: ${d.table.fileName} › ${d.table.sheetName} (${d.table.layout} layout, ${d.table.periods.length} period(s), ${d.table.rows.length} rows, ${unmapped} not mapped). ${d.table.notes.join(' ')}</p>
+    ${d.textPages === undefined ? null : html`<p><span class="tag lv-info">TEXT</span> ${d.textPages} page(s) of report text scanned: ${(d.textHits ?? []).filter((h) => h.kind === 'flag').length} governance sentence(s) and ${(d.textHits ?? []).filter((h) => h.kind === 'claim').length} management claim(s) matched the lexicon. They appear, quoted with page numbers, on the Governance tab.</p>`}
+    ${d.table.layout === 'manual' ? html`<p><span class="tag lv-info">MANUAL</span> Type figures straight into the table below, in INR crore. Leave a box empty if you do not have the figure: it stays missing.</p>` : null}
     ${financial ? html`<p><span class="tag lv-muted">NOT ASSESSABLE</span> Sector is financial: the result will be "Not assessable with these rules". Change the sector if the name-based detection is wrong.</p>` : null}
     ${existing ? html`<p><span class="tag lv-info">RE-SCAN</span> ${company.ticker} is already stored${existing.caseFile.sample ? ' as a sample (it will be replaced)' : '; this scan will be compared with the previous one'}.</p>` : null}`;
 

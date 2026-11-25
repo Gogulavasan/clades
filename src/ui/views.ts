@@ -1,4 +1,5 @@
 /** Screen bodies. Build 1 ships the terminal shell: every panel is present but honestly empty. */
+import validationJson from '../../config/validation.json';
 import { DISCLAIMER, RULE_LIBRARY_VERSION } from '../config';
 import { COMMAND_HINT } from './command';
 import { empty, html, panel, type Raw } from './dom';
@@ -15,9 +16,9 @@ const BUILD_STAGES: ReadonlyArray<readonly [string, BuildState]> = [
   ['Beneish M-score with hand-checked tests', 'DONE'],
   ['Other rule batteries, Fraud Triangle, case file', 'DONE'],
   ['Company dashboard and portfolio monitor', 'DONE'],
-  ['Manual entry and PDF extraction', 'NEXT'],
-  ['Honest-profit estimator and text rules', 'PLANNED'],
-  ['Offline sector benchmarks and back-test', 'PLANNED'],
+  ['Manual entry and PDF extraction', 'DONE'],
+  ['Honest-profit estimator and text rules', 'DONE'],
+  ['Offline benchmark builder and back-test (awaiting real data)', 'DONE'],
 ];
 
 function home(): Raw {
@@ -41,10 +42,13 @@ function home(): Raw {
       html`<p><label class="btn primary">1 · CHOOSE EXCEL / CSV FILE<input type="file" class="sr" data-act="file" accept=".xlsx,.xls,.csv" /></label></p>
         <p class="muted">A Screener.in "Export to Excel" file works as it is. Any sheet with line items down the side and years across the top also works. You review every figure before anything is scored.</p>
         <p><button type="button" data-act="sample-csv">DOWNLOAD A SYNTHETIC SAMPLE CSV</button> <span class="muted">to try the upload yourself</span></p>
-        <ul class="rows">
-          <li><span class="k">2 Manual entry</span><span class="muted">Type the key line items for two or more years</span><span class="tag tag-muted">BUILD 6</span></li>
-          <li><span class="k">3 PDF annual report</span><span class="muted">Rule-based extraction; scanned PDFs fall back to manual entry</span><span class="tag tag-muted">BUILD 6</span></li>
-        </ul>`,
+        <p><label class="btn">2 · CHOOSE PDF ANNUAL REPORT<input type="file" class="sr" data-act="pdf" accept=".pdf,application/pdf" /></label>
+          <a href="${import.meta.env.BASE_URL}sample-SYNTHETIC-annual-report.pdf" download>synthetic sample PDF</a></p>
+        <p class="muted">Rule-based: finds the balance sheet, P&amp;L and cash flow, reads current and prior year, and scans the text for auditor and governance language. No OCR: a scanned PDF falls back to manual entry.</p>
+        <p class="inline"><span>3 · MANUAL ENTRY: latest FY</span>
+          <label class="sr" for="man-fy">Latest financial year</label><input type="text" inputmode="numeric" id="man-fy" value="${new Date().getFullYear()}" />
+          <label for="man-n">years</label><select id="man-n"><option>2</option><option selected>3</option><option>4</option><option>5</option></select>
+          <button type="button" data-act="manual">START</button></p>`,
       5,
     )}
     ${panel(
@@ -63,7 +67,7 @@ function home(): Raw {
       'Ground rules',
       html`<ul class="plain">
         <li>No figure is ever invented. A missing number stays missing and its metric is left out.</li>
-        <li>Every number traces back to a source file, a row and a confidence level.</li>
+        <li>Every number traces back to a source file, a row or page, and a confidence level.</li>
         <li>Figures the source does not report exactly are labelled PROXY and can be switched off.</li>
         <li>Thresholds and weights are judgment, not yet back-tested on Indian data. Sector benchmarks are placeholders.</li>
         <li>${DISCLAIMER}</li>
@@ -111,24 +115,91 @@ function privacy(): Raw {
   </div>`;
 }
 
+interface ValidationSet {
+  name: string;
+  n: number;
+  tp: number;
+  fp: number;
+  fn: number;
+  tn: number;
+  hitRate: number | null;
+  falsePositiveRate: number | null;
+  precision: number | null;
+  auc: number | null;
+}
+interface Validation {
+  status: string;
+  generatedAt?: string | null;
+  note?: string;
+  source?: string;
+  sample?: { caseCompanies: number; controlCompanies: number; companyYears: number; positives: number; negatives: number };
+  split?: { trainUpToFy: number; publishedThreshold: number; tunedThreshold: number | null };
+  sets?: ValidationSet[];
+  earlyWarning?: { company: string; eventFy: number; firstFlagFy: number | null; yearsEarly: number | null }[];
+  baseRates?: { prevalence: number; precision: number | null }[];
+  caveats?: string[];
+}
+const VALIDATION = validationJson as unknown as Validation;
+const pct = (x: number | null | undefined): string => (x === null || x === undefined ? 'n/a' : `${(x * 100).toFixed(0)}%`);
+
 function validation(): Raw {
+  const v = VALIDATION;
+  if (v.status !== 'ok' || !v.sets || !v.sample) {
+    return html`<div class="grid">
+      ${panel(
+        'V',
+        'Validation · back-test',
+        html`<div class="prose">
+          <p><span class="tag tag-muted">NO RESULTS YET</span> The back-test has not been run on real data.</p>
+          <p>${v.note ?? ''}</p>
+          <p>
+            The tooling is in the repository: <code>notebooks/cases_template.csv</code> lists the known Indian cases with empty figure columns,
+            <code>scripts/backtest.py</code> computes the Beneish M-score per company-year and reports years flagged early, hit rate,
+            false-positive rate on a clean control group, precision and ROC/AUC, with the threshold fixed on an earlier period and tested on a later one.
+            <code>notebooks/backtest.ipynb</code> walks through it.
+          </p>
+          <p class="muted">
+            Figures must be typed in by hand from original annual reports. Until that is done this page stays empty: no performance number is shown that was not measured,
+            and the tier cut-offs (30 and 70) and rule weights remain judgment.
+          </p>
+        </div>`,
+      )}
+    </div>`;
+  }
   return html`<div class="grid">
     ${panel(
       'V',
-      'Validation · back-test',
-      html`<div class="prose">
-        <p><span class="tag tag-muted">NO RESULTS YET</span> The back-test has not been run.</p>
-        <p>
-          This page will show how the rules performed on known Indian cases against a clean control group: years
-          flagged early, hit rate, false-positive rate, precision and ROC/AUC, with thresholds fixed on an earlier
-          period and tested on a later one.
-        </p>
-        <p class="muted">
-          Until figures are entered by hand from original annual reports, this page stays empty. No performance number
-          is shown that was not measured.
-        </p>
-      </div>`,
+      'Validation · Beneish M-score back-test',
+      html`<p>Run ${(v.generatedAt ?? '').slice(0, 10)} · source: ${v.source ?? 'n/a'}</p>
+        <dl class="metrics">
+          <div><dt>Case companies</dt><dd>${v.sample.caseCompanies}</dd></div>
+          <div><dt>Control companies</dt><dd>${v.sample.controlCompanies}</dd></div>
+          <div><dt>Company-years</dt><dd>${v.sample.companyYears}</dd></div>
+          <div><dt>Positives / negatives</dt><dd>${v.sample.positives} / ${v.sample.negatives}</dd></div>
+        </dl>
+        <div class="scroll"><table class="tbl">
+          <thead><tr><th scope="col">Set</th><th scope="col">n</th><th scope="col">Hit rate</th><th scope="col">False-positive rate</th><th scope="col">Precision</th><th scope="col">ROC AUC</th><th scope="col">TP / FP / FN / TN</th></tr></thead>
+          <tbody>${v.sets.map((s) => html`<tr><td class="k">${s.name}</td><td>${s.n}</td><td>${pct(s.hitRate)}</td><td>${pct(s.falsePositiveRate)}</td><td>${pct(s.precision)}</td><td>${s.auc === null ? 'n/a' : s.auc.toFixed(2)}</td><td>${s.tp} / ${s.fp} / ${s.fn} / ${s.tn}</td></tr>`)}</tbody>
+        </table></div>
+        <p class="muted">Threshold fixed on FY ≤ ${v.split?.trainUpToFy} and tested on later years. Published threshold ${v.split?.publishedThreshold}; tuned on the earlier period ${v.split?.tunedThreshold ?? 'n/a'}.</p>`,
+      8,
     )}
+    ${panel(
+      'B',
+      'Base rates · what a flag is worth',
+      html`<table class="tbl"><thead><tr><th scope="col">If this share of companies really has a problem</th><th scope="col">Then a flag is right about</th></tr></thead>
+          <tbody>${(v.baseRates ?? []).map((b) => html`<tr><td>${pct(b.prevalence)}</td><td>${pct(b.precision)}</td></tr>`)}</tbody></table>
+        <p class="muted">Precision in the back-test is inflated because the sample was built with roughly equal cases and controls. In the real market problems are rare, so most flags are false alarms even with a good hit rate.</p>`,
+      4,
+    )}
+    ${panel(
+      'E',
+      'Years flagged early',
+      html`<table class="tbl"><thead><tr><th scope="col">Company</th><th scope="col">Event FY</th><th scope="col">First flagged FY</th><th scope="col">Years early</th></tr></thead>
+        <tbody>${(v.earlyWarning ?? []).map((e) => html`<tr><td class="k">${e.company}</td><td>${e.eventFy}</td><td>${e.firstFlagFy ?? 'never flagged'}</td><td>${e.yearsEarly ?? '-'}</td></tr>`)}</tbody></table>`,
+      6,
+    )}
+    ${panel('C', 'Caveats', html`<ul class="plain">${(v.caveats ?? []).map((c) => html`<li>${c}</li>`)}</ul>`, 6)}
   </div>`;
 }
 
