@@ -1,6 +1,6 @@
 {
   "name": "clades",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "description": "CLADES - browser-only forensic accounting screen for Indian listed non-financial companies",
   "license": "MIT",

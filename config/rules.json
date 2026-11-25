@@ -1,6 +1,6 @@
 {
   "$comment": "CLADES rule library. Every threshold, weight and explanation lives here. Rules can be added (formula language: see src/rules/formula.ts), tuned or disabled ('enabled': false) without code changes. Weights and amber/red cut-offs are the author's judgment, NOT calibrated on Indian data; the back-test (build 8) exists to challenge them.",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "beneish": {
     "$comment": "Beneish (1999), 'The Detection of Earnings Manipulation', Financial Analysts Journal 55(5). Reference means below: verify against the paper; US sample; recalibrate on Indian data.",
     "intercept": -4.84,

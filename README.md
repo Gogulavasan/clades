@@ -22,7 +22,7 @@ Live: https://gogulavasan.github.io/clades/
 | 8 | Offline benchmark builder and back-test tooling | Done (awaiting real data) |
 
 Still open, and labelled as such in the app: the back-test has **not been run** (no hand-entered case data yet), sector
-benchmarks are placeholders, the PDF route has only been tested on a synthetic report, and the Families panel,
+benchmarks are placeholders, the PDF route has been tested on a synthetic report and one real annual report, and the Families panel,
 auditor tenure/size and receivables-ageing checks are not built.
 
 ![Company report](docs/screenshots/company-report.jpg)
@@ -52,8 +52,11 @@ Excel/CSV | PDF | manual -> extract -> map columns -> CONFIRM (you review every 
    confirm screen.
 3. **PDF annual report** (pdf.js, in the browser). Rule-based: statement pages are found by their headings, a page
    must be a table to qualify, and each line's last two numbers are read as current and prior year. The balance-sheet
-   section a line sits in decides, for example, whether "Borrowings" is long-term or short-term. The whole text is
-   also scanned with the regex lexicon in `config/lexicon.json`; every match is shown as a quoted sentence with its
+   section a line sits in decides, for example, whether "Borrowings" is long-term or short-term. Landscape pages
+   are also read as two halves, because many reports are exported as two-page spreads; the P&L and cash flow are taken
+   from the pages that follow the chosen balance sheet so all three come from the same (consolidated) set; a section
+   subtotal printed as bare numbers is read by position and tagged LOW. The whole text is
+   also scanned (column by column, so quotes are not stitched across columns) with the regex lexicon in `config/lexicon.json`; every match is shown as a quoted sentence with its
    page. Scanned PDFs have no text layer: the app says so and opens manual entry. No OCR is used.
 4. **Manual entry.** Pick the latest year and how many years; the confirm screen becomes the form.
 5. **Optional price CSV** per company (`date, close, volume`) for the price/volume panel.
@@ -147,12 +150,18 @@ source must be "GitHub Actions".
   figures, which can leak the answer into a back-test.
 - **Ind AS transition.** Accounts before and after the move to Ind AS (FY2017-FY2018) are not directly comparable.
 - **Extraction errors.** Figures read from a spreadsheet or PDF can be wrong; the confirm step exists so a person
-  checks them before anything is scored. PDF extraction has been tested on a synthetic report only.
+  checks them before anything is scored.
 - **Text rules are keyword matches.** They miss paraphrases and can quote a sentence out of context. A rule that
   finds nothing has not established that nothing is there.
 - **The honest-profit bridge is a stress test.** Its "soft assets" bucket also contains genuine investments and
   goodwill, and its default percentages are arbitrary.
-- **Not verified on real filings.** No real Screener export or real annual report has been run through this build.
+- **Tested on one real annual report only.** A 395-page integrated report exposed five extraction failures (two-page
+  spreads, multi-column prose, roman-numeral section headings, unlabelled subtotals, and a standalone statement set
+  printed before the consolidated one). Each is fixed and covered by a regression test built from synthetic content,
+  but one report is not a sample: other layouts will break it in new ways. No real Screener export has been tested.
+- **Exceptional items are not adjusted.** A large one-off gain (for example on selling an investment) sits in profit
+  while its cash sits in investing activities, so CFO/PAT looks weak for an innocent reason. Likewise, capex far above
+  depreciation is normal for a company building infrastructure. Read the innocent explanation beside each flag.
 
 ## More
 

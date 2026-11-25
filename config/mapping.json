@@ -46,16 +46,16 @@
       "field": "cff"
     },
     {
-      "pattern": "^net (increase|decrease|increase ?/ ?\\(?decrease\\)?) in cash and cash equivalents$",
+      "pattern": "^net (increase|decrease|increase ?/ ?\\(?decrease\\)?) in cash (and|&) cash equivalents( \\(.*\\))?$",
       "field": "netCashFlow"
     },
     {
-      "pattern": "^(purchase|acquisition) of property, plant and equipment.*$",
+      "pattern": "^((purchase|acquisition) of|capital expenditure on|payments? (for|towards)) property, plant (and|&) equipment.*$",
       "field": "capex",
       "sign": -1
     },
     {
-      "pattern": "^(income )?tax(es)? paid.*$",
+      "pattern": "^((income|direct) )?tax(es)? paid( \\((net|net of refunds?)\\))?$",
       "field": "taxPaid",
       "sign": -1
     },
@@ -74,7 +74,7 @@
       "field": "revenue"
     },
     {
-      "pattern": "^(raw material cost|cost of materials consumed|cost of goods sold|cogs|purchases of stock-in-trade)$",
+      "pattern": "^(raw material cost|cost of materials? consumed|cost of goods sold|cogs|purchases? of stock[- ]in[- ]trade)$",
       "field": "cogs"
     },
     {
@@ -95,7 +95,7 @@
       "field": "sga"
     },
     {
-      "pattern": "^other expenses$",
+      "pattern": "^((operating (and|&) )?other expenses)$",
       "field": "otherExpenses"
     },
     {
@@ -103,7 +103,7 @@
       "field": "otherIncome"
     },
     {
-      "pattern": "^(depreciation|depreciation (and|&) amorti[sz]ation( expenses?)?)$",
+      "pattern": "^(depreciation|depreciation,? ((and|&) )?amorti[sz]ation( (and|&) impairment)?( expenses?)?)$",
       "field": "depreciation"
     },
     {
@@ -111,7 +111,7 @@
       "field": "interest"
     },
     {
-      "pattern": "^(profit before tax|profit before exceptional items and tax|pbt)$",
+      "pattern": "^(profit before tax( from continuing operations)?|pbt)$",
       "field": "pbt"
     },
     {

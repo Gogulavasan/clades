@@ -7,11 +7,9 @@ import lexicon from '../../config/lexicon.json';
 import { parseNumber, parsePeriod, type SourceRow, type SourceTable } from '../ingest/grid';
 import type { Basis, TextHit } from '../standardise/schema';
 import type { UnitId } from '../standardise/standardise';
+import type { PdfPage } from './layout';
 
-export interface PdfPage {
-  page: number;
-  lines: string[];
-}
+export type { PdfPage } from './layout';
 
 export type StatementKind = 'bs' | 'pl' | 'cf';
 
@@ -35,7 +33,7 @@ const MAX_SENTENCE = 320;
 const STATEMENTS: Record<StatementKind, { name: string; heading: RegExp; must: RegExp[]; end: RegExp }> = {
   bs: { name: 'Balance sheet', heading: /balance sheet/i, must: [/total assets/i, /equity/i], end: /total equity and liabilities|total liabilities and equity/i },
   pl: { name: 'Statement of profit and loss', heading: /statement of profit (and|&) loss|profit (and|&) loss (account|statement)/i, must: [/revenue from operations/i], end: /earnings per (equity )?share/i },
-  cf: { name: 'Cash flow statement', heading: /cash flows?( statement)?|statement of cash flows?/i, must: [/operating activities/i], end: /cash and cash equivalents at (the )?end/i },
+  cf: { name: 'Cash flow statement', heading: /statement of cash flows?|cash flows? statement/i, must: [/operating activities/i], end: /cash and cash equivalents at (the )?end/i },
 };
 
 const BS_SECTIONS: ReadonlyArray<readonly [RegExp, string]> = [
@@ -46,8 +44,15 @@ const BS_SECTIONS: ReadonlyArray<readonly [RegExp, string]> = [
   [/^current liabilities\b/i, 'Current liabilities'],
 ];
 
+const SUBTOTAL_SECTIONS = new Set(['Non-current assets', 'Current assets', 'Non-current liabilities', 'Current liabilities']);
 const NUMERIC = /^\(?-?(\d[\d,]*\.?\d*|\.\d+)\)?$/;
 const NIL = /^[-–—]$/;
+const ROMAN = /^[IVX]{1,4}\s+(?=[A-Za-z])/;
+/** A notes page can repeat statement words ("net cash from operating activities" in a discontinued-operations note). */
+const NOTES_PAGE = /\bnotes? (forming part|to (the )?(consolidated |standalone )?(financial|statement))/i;
+const OTHER_STATEMENT = /changes in equity/i;
+/** The P&L and cash flow sit within a few pages of their balance sheet. */
+const MAX_STATEMENT_GAP = 12;
 const ENUMERATOR = /^(\(?[a-z]{1,3}\)|\(?[ivx]+\)|\d{1,2}[.)]|[A-Z][.)])\s+/;
 
 /** Splits a statement line into its label and the trailing run of numbers. A lone dash means nil (zero). */
@@ -63,11 +68,17 @@ export function splitLine(line: string): { label: string; numbers: number[] } {
     end--;
   }
   let label = tokens.slice(0, end).join(' ');
-  for (let i = 0; i < 2; i++) label = label.replace(ENUMERATOR, '');
+  for (let i = 0; i < 2; i++) label = label.replace(ENUMERATOR, '').replace(ROMAN, '');
   return { label: label.replace(/[:.\s]+$/, '').trim(), numbers };
 }
 
-const headingOf = (p: PdfPage): string => p.lines.slice(0, HEADING_LINES).join(' ');
+/** One readable unit: a whole page, or one half of a two-page spread. */
+interface View {
+  page: number;
+  lines: string[];
+  side: '' | 'left' | 'right';
+}
+const headingOf = (p: View): string => p.lines.slice(0, HEADING_LINES).join(' ');
 
 interface PageClass {
   kind: StatementKind;
@@ -77,8 +88,9 @@ interface PageClass {
   wide: boolean;
 }
 
-function classify(p: PdfPage): PageClass | null {
+function classify(p: View): PageClass | null {
   const head = headingOf(p);
+  if (NOTES_PAGE.test(head)) return null;
   const body = p.lines.join(' ');
   // A statement is a table. Prose that merely mentions "balance sheet" (an auditor's report, say) is not.
   const counts = p.lines.map((l) => splitLine(l).numbers.length).filter((n) => n >= 2);
@@ -133,7 +145,7 @@ export function scanText(pages: PdfPage[]): TextHit[] {
   for (const p of pages) {
     // Headings carry no full stop, so a short line without closing punctuation also ends a sentence;
     // otherwise a page header would be glued onto the first quote.
-    const text = p.lines.map((l) => (isHeading(l) ? `${l.trim()}${BREAK}` : l)).join(' ').replace(/\s+/g, ' ');
+    const text = (p.text ?? p.lines).map((l) => (isHeading(l) ? `${l.trim()}${BREAK}` : l)).join(' ').replace(/\s+/g, ' ');
     const sentences = text.split(SENTENCE_END).map((s) => s.trim()).filter(Boolean);
     for (const sentence of sentences) {
       for (const d of defs) {
@@ -161,23 +173,48 @@ export function extractFromPages(pages: PdfPage[], fileName: string): PdfExtract
   }
 
   // Locate each statement: prefer consolidated, otherwise the first page that qualifies.
-  const classified = pages.map((p) => ({ p, c: classify(p) }));
-  const chosen: { kind: StatementKind; pages: PdfPage[]; consolidated: boolean; standalone: boolean }[] = [];
+  // A landscape page may be a two-page spread: if either half is a statement in its own right, read the halves separately.
+  const views: View[] = pages.flatMap((p): View[] => {
+    const whole: View = { page: p.page, lines: p.lines, side: '' };
+    if (!p.halves) return [whole];
+    const l: View = { page: p.page, lines: p.halves[0], side: 'left' };
+    const r: View = { page: p.page, lines: p.halves[1], side: 'right' };
+    return classify(l) || classify(r) ? [l, r] : [whole];
+  });
+  const classified = views.map((p) => ({ p, c: classify(p) }));
+  const chosen: { kind: StatementKind; pages: View[]; consolidated: boolean; standalone: boolean }[] = [];
+  let anchor = -1;
   for (const kind of ['bs', 'pl', 'cf'] as const) {
     const cands = classified.filter((x) => x.c?.kind === kind);
     const primary = cands.filter((x) => !x.c?.wide);
     const pool = primary.length ? primary : cands;
-    const pick = pool.find((x) => x.c?.consolidated) ?? pool[0];
+    // A report carries a standalone and a consolidated set, and only some headings say which. The balance sheet is
+    // chosen first (consolidated preferred); the P&L and cash flow are then the ones that follow it most closely,
+    // so the three statements always come from the same set.
+    const near = anchor < 0 ? undefined : pool.find((x) => classified.indexOf(x) >= anchor && classified.indexOf(x) - anchor <= MAX_STATEMENT_GAP);
+    const pick = near ?? pool.find((x) => x.c?.consolidated) ?? pool[0];
     if (!pick?.c) {
       notes.push(`${STATEMENTS[kind].name}: not found. Its lines stay missing; add them by hand below if you have them.`);
       continue;
     }
+    if (kind === 'bs') anchor = classified.indexOf(pick);
     found[kind] = pick.p.page;
+    if (pick.p.side) notes.push(`${STATEMENTS[kind].name}: read from the ${pick.p.side} half of page ${pick.p.page} (a two-page spread).`);
     const use = [pick.p];
-    // A statement often runs onto the next page: take it when this page has not reached the statement's closing line.
-    const next = classified.find((x) => x.p.page === pick.p.page + 1);
-    if (next && !STATEMENTS[kind].end.test(pick.p.lines.join(' ')) && (!next.c || next.c.kind === kind)) use.push(next.p);
-    chosen.push({ kind, pages: use, consolidated: pick.c.consolidated, standalone: pick.c.standalone });
+    // A statement often runs onto the next page (or the other half of a spread): take it when this page has not
+    // reached the statement's closing line and the continuation is not a different statement.
+    if (!STATEMENTS[kind].end.test(pick.p.lines.join(' '))) {
+      const after = pages.find((p) => p.page === pick.p.page + 1);
+      const next: View | undefined =
+        pick.p.side === 'left'
+          ? classified[classified.indexOf(pick) + 1]?.p
+          : after && { page: after.page, lines: pick.p.side === 'right' && after.halves ? after.halves[0] : after.lines, side: pick.p.side === 'right' && after.halves ? 'left' : '' };
+      const nc = next ? classify(next) : null;
+      if (next && (!nc || nc.kind === kind) && !OTHER_STATEMENT.test(headingOf(next))) use.push(next);
+    }
+    const same = near !== undefined && kind !== 'bs';
+    const bs = chosen.find((c) => c.kind === 'bs');
+    chosen.push({ kind, pages: use, consolidated: pick.c.consolidated || (same && Boolean(bs?.consolidated)), standalone: pick.c.standalone || (same && Boolean(bs?.standalone)) });
   }
 
   const allLines = chosen.flatMap((c) => c.pages.flatMap((p) => p.lines));
@@ -190,12 +227,27 @@ export function extractFromPages(pages: PdfPage[], fileName: string): PdfExtract
   if (chosen.some((c) => c.consolidated) && !chosen.every((c) => c.consolidated)) notes.push('Consolidated and standalone statements appear to be mixed: check each figure.');
 
   const rows: SourceRow[] = [];
+  const unlabelled = new Set<string>();
+  const seen = new Set<string>();
   for (const c of chosen) {
     let ctx = '';
     for (const p of c.pages) {
       for (const line of p.lines) {
         const { label, numbers } = splitLine(line);
+        // Some reports print a section subtotal as two bare numbers. It is read as that section's total and tagged LOW;
+        // a later bare line in the same section replaces it, because the section total comes last.
+        if (c.kind === 'bs' && !label && numbers.length === 2 && SUBTOTAL_SECTIONS.has(ctx)) {
+          const name = `Total ${ctx.toLowerCase()}`;
+          const old = rows.findIndex((r) => r.label === name && r.confidence === 'low');
+          if (old >= 0) rows.splice(old, 1);
+          rows.push({ index: 0, section: 'bs', label: name, values: [numbers[1] ?? null, numbers[0] ?? null], page: p.page, confidence: 'low' });
+          unlabelled.add(name);
+          continue;
+        }
         if (!label || !/[a-z]{3}/i.test(label)) continue;
+        // The same caption can recur lower down ("Profit for the year" again under "attributable to"): the first is the statement line.
+        if (numbers.length >= 2 && seen.has(`${c.kind}|${ctx}|${label.toLowerCase()}`)) continue;
+        if (numbers.length >= 2) seen.add(`${c.kind}|${ctx}|${label.toLowerCase()}`);
         if (c.kind === 'bs') {
           const sec = BS_SECTIONS.find(([re]) => re.test(label));
           if (sec && numbers.length < 2) {
@@ -215,6 +267,8 @@ export function extractFromPages(pages: PdfPage[], fileName: string): PdfExtract
       }
     }
   }
+  rows.forEach((r, i) => (r.index = i));
+  if (unlabelled.size) notes.push(`Printed without a label and read by position, tagged LOW: ${[...unlabelled].join(', ')}. Check them against the report.`);
   if (rows.length) notes.push('PDF extraction is rule-based and can misread columns. Every figure is tagged MED or LOW: compare them with the report before running the engine.');
 
   return {

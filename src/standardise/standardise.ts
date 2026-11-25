@@ -40,7 +40,7 @@ export function autoMap(table: SourceTable): Mapping {
   for (const row of table.rows) {
     const label = row.label.trim();
     // Screener prints "Total" twice in the balance sheet: liabilities side first, then assets side.
-    if (row.section === 'bs' && /^total$/i.test(label)) {
+    if (table.layout === 'screener' && row.section === 'bs' && /^total$/i.test(label)) {
       mapping[row.index] = { field: bsTotals++ === 0 ? 'totalLiabilitiesEquity' : 'totalAssets', sign: 1, confidence: 'high' };
       continue;
     }
